@@ -1,4 +1,4 @@
-package inspectr
+package main
 
 import (
 	"crypto/tls"
@@ -10,15 +10,18 @@ import (
 	"time"
 )
 
+
+//Pod type
 type Pod struct {
-	ImageUri string
+	ImageURI string
 	Name string
 	Namespace string
 	Phase string
 }
 
+//Data type representing the json schema of https://[master]/api/v1/pods
 type Data struct {
-	ApiVersion string `json:"apiVersion"`
+	APIVersion string `json:"apiVersion"`
 	Items      []struct {
 		Metadata struct {
 			Annotations struct {
@@ -33,16 +36,16 @@ type Data struct {
 			Name            string `json:"name"`
 			Namespace       string `json:"namespace"`
 			OwnerReferences []struct {
-				ApiVersion         string `json:"apiVersion"`
+				APIVersion         string `json:"apiVersion"`
 				BlockOwnerDeletion bool   `json:"blockOwnerDeletion"`
 				Controller         bool   `json:"controller"`
 				Kind               string `json:"kind"`
 				Name               string `json:"name"`
-				Uid                string `json:"uid"`
+				UID                string `json:"uid"`
 			} `json:"ownerReferences"`
 			ResourceVersion int64  `json:"resourceVersion,string"`
 			SelfLink        string `json:"selfLink"`
-			Uid             string `json:"uid"`
+			UID             string `json:"uid"`
 		} `json:"metadata"`
 		Spec struct {
 			Containers []struct {
@@ -55,7 +58,7 @@ type Data struct {
 				} `json:"ports"`
 				ReadinessProbe struct {
 					FailureThreshold int64 `json:"failureThreshold"`
-					HttpGet          struct {
+					HTTPGet          struct {
 						Path   string `json:"path"`
 						Port   int64  `json:"port"`
 						Scheme string `json:"scheme"`
@@ -66,11 +69,11 @@ type Data struct {
 				} `json:"readinessProbe"`
 				Resources struct {
 					Limits struct {
-						Cpu    string  `json:"string"`
+						CPU    string  `json:"string"`
 						Memory string `json:"memory"`
 					} `json:"limits"`
 					Requests struct {
-						Cpu    string `json:"cpu"`
+						CPU    string `json:"cpu"`
 						Memory string `json:"memory"`
 					} `json:"requests"`
 				} `json:"resources"`
@@ -81,7 +84,7 @@ type Data struct {
 					Name      string `json:"name"`
 				} `json:"volumeMounts"`
 			} `json:"containers"`
-			DnsPolicy       string `json:"dnsPolicy"`
+			DNSPolicy       string `json:"dnsPolicy"`
 			NodeName        string `json:"nodeName"`
 			RestartPolicy   string `json:"restartPolicy"`
 			SchedulerName   string `json:"schedulerName"`
@@ -141,7 +144,6 @@ type Data struct {
 	} `json:"metadata"`
 }
 
-
 func main(){
 	fmt.Println("hello inspectr")
 
@@ -158,6 +160,7 @@ func main(){
 	fmt.Println(podSlice)
 }
 
+//podSlice returns a slice of Pod types, constructed from what's deemed to be valid pods in rs json from k8s master
 func podSlice(jsonData *Data) (pods []Pod){
 	var ignoreNamespaces = map[string]struct{}{
 		"kube-system": struct{}{},
@@ -184,6 +187,7 @@ func podSlice(jsonData *Data) (pods []Pod){
 	return
 }
 
+//bodyFromMaster returns a ReadCloser from the k8s master's rs, and an error
 func bodyFromMaster() (r io.ReadCloser, err error){
 	tr := &http.Transport{
 		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
@@ -199,6 +203,7 @@ func bodyFromMaster() (r io.ReadCloser, err error){
 	return
 }
 
+//decode returns a Data type, decoded from the specified Reader, and an error
 func decode(r io.Reader) (x *Data, err error) {
 	x = new(Data)
 	err = json.NewDecoder(r).Decode(x)
