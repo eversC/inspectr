@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
@@ -10,6 +11,11 @@ import (
 	"time"
 )
 
+//SlackMsgType
+type SlackMsg struct {
+	Text string `json:"text"`
+	Username string `json:"username"`
+}
 
 //Pod type
 type Pod struct {
@@ -158,6 +164,7 @@ func main(){
 	}
 	podSlice := podSlice(jsonData)
 	fmt.Println(podSlice)
+	postToSlack(fmt.Sprintf("%#v", podSlice), "[webhookId]")
 }
 
 //podSlice returns a slice of Pod types, constructed from what's deemed to be valid pods in rs json from k8s master
@@ -197,7 +204,7 @@ func bodyFromMaster() (r io.ReadCloser, err error){
 	req.Header.Set("Authorization", "Bearer [token]")
 	resp, err := client.Do(req)
 	if err != nil {
-		fmt.Println(err)
+		panic(err)
 	}
 	r = resp.Body
 	return
@@ -208,4 +215,17 @@ func decode(r io.Reader) (x *Data, err error) {
 	x = new(Data)
 	err = json.NewDecoder(r).Decode(x)
 	return
+}
+
+//postToSlack posts the specified text string to the specified slack webhook.
+//It doesn't return anything.
+func postToSlack(text, webhookId string){
+	bytesBuff := new(bytes.Buffer)
+	slackMsg := SlackMsg{text, "inspectr"}
+    json.NewEncoder(bytesBuff).Encode(slackMsg)
+	_, err := http.Post("https://hooks.slack.com/services/" + webhookId,
+		"application/json; charset=utf-8", bytesBuff)
+	if err != nil {
+		fmt.Print(err)
+	}
 }
