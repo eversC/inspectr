@@ -220,14 +220,14 @@ func bodyFromMaster() (r io.ReadCloser, err error){
 	return
 }
 
-//decode returns a Data type, decoded from the specified Reader, and an error
+//decodeData returns a Data type, decoded from the specified Reader, and an error
 func decodeData(r io.Reader) (x *Data, err error) {
 	x = new(Data)
 	err = json.NewDecoder(r).Decode(x)
 	return
 }
 
-//decode returns a DockerTag type, decoded from the specified Reader, and an error
+//decodeDockerTag returns a DockerTag type, decoded from the specified Reader, and an error
 func decodeDockerTag(r io.Reader) (x *DockerTag, err error) {
 	x = new(DockerTag)
 	err = json.NewDecoder(r).Decode(x)
