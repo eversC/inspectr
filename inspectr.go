@@ -169,8 +169,8 @@ func main(){
 	if err != nil {
 		panic(err)
 	}
-	podSlice := podSlice(jsonData)
-	postToSlack(fmt.Sprintf("%#v", podSlice), "[webhookId]")
+	imageToPodsMap := imageToPodsMap(jsonData)
+	postToSlack(fmt.Sprintf("%#v", imageToPodsMap), "[webhookId]")
 
 	dockerTagSlice, err := dockerTagSlice("eversc/inspectr")
 	postToSlack(fmt.Sprintf("%#v", dockerTagSlice), "[webhookId]")
@@ -178,14 +178,14 @@ func main(){
 }
 
 //podSlice returns a slice of Pod types, constructed from what's deemed to be valid pods in rs json from k8s master
-func podSlice(jsonData *Data) (pods []Pod){
+func imageToPodsMap(jsonData *Data) (imageToPodsMap map[string][]Pod){
 	var ignoreNamespaces = map[string]struct{}{
 		"kube-system": struct{}{},
 	}
 	var allowedPodPhases = map[string]struct{}{
 		"Running": struct{}{},
 	}
-
+	imageToPodsMap = make(map[string][]Pod)
 	for _, item := range jsonData.Items{
 		metadata := item.Metadata
 		namespace := metadata.Namespace
@@ -195,10 +195,27 @@ func podSlice(jsonData *Data) (pods []Pod){
 			_, ok := allowedPodPhases[phase]
 			if ok {
 				for _, container := range item.Spec.Containers {
-					pod := Pod{container.Image, metadata.Name, namespace, phase}
-					pods = append(pods, pod)
+					image := container.Image
+					pod := Pod{image, metadata.Name, namespace, phase}
+					pods, _ := imageToPodsMap[image]
+					if !podSliceContains(pods, pod){
+						pods = append(pods, pod)
+						imageToPodsMap[image] = pods
+					}
 				}
 			}
+		}
+	}
+	return
+}
+
+//podSliceContains returns a bool indicating whether the specified Pod is in the specified Pod slice
+func podSliceContains(pods []Pod, pod Pod) (podExists bool){
+	podExists = false
+	for _, slicePod := range pods{
+		if slicePod.ImageURI == pod.ImageURI && slicePod.Namespace == pod.Namespace{
+			podExists = true
+			break
 		}
 	}
 	return
