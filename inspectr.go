@@ -11,7 +11,14 @@ import (
 	"time"
 )
 
-//SlackMsgType
+//DockerTag type representing the json schema of docker registry versions page
+//e.g. https://registry.hub.docker.com/v1/repositories/eversc/inspectr/tags
+type DockerTag []struct {
+	Layer string `json:"layer"`
+	Name  string `json:"name"`
+}
+
+//SlackMsg type
 type SlackMsg struct {
 	Text string `json:"text"`
 	Username string `json:"username"`
@@ -158,13 +165,16 @@ func main(){
 		panic(err)
 	}
 	defer bodyReader.Close()
-	jsonData, err := decode(bodyReader)
+	jsonData, err := decodeData(bodyReader)
 	if err != nil {
 		panic(err)
 	}
 	podSlice := podSlice(jsonData)
-	fmt.Println(podSlice)
 	postToSlack(fmt.Sprintf("%#v", podSlice), "[webhookId]")
+
+	dockerTagSlice, err := dockerTagSlice("eversc/inspectr")
+	postToSlack(fmt.Sprintf("%#v", dockerTagSlice), "[webhookId]")
+
 }
 
 //podSlice returns a slice of Pod types, constructed from what's deemed to be valid pods in rs json from k8s master
@@ -210,9 +220,16 @@ func bodyFromMaster() (r io.ReadCloser, err error){
 	return
 }
 
-//decode returns a Data type, decoded from the specified Reader, and an error
-func decode(r io.Reader) (x *Data, err error) {
+//decodeData returns a Data type, decoded from the specified Reader, and an error
+func decodeData(r io.Reader) (x *Data, err error) {
 	x = new(Data)
+	err = json.NewDecoder(r).Decode(x)
+	return
+}
+
+//decodeDockerTag returns a DockerTag type, decoded from the specified Reader, and an error
+func decodeDockerTag(r io.Reader) (x *DockerTag, err error) {
+	x = new(DockerTag)
 	err = json.NewDecoder(r).Decode(x)
 	return
 }
@@ -228,4 +245,15 @@ func postToSlack(text, webhookId string){
 	if err != nil {
 		fmt.Print(err)
 	}
+}
+
+//dockerTagSlice returns a DockerTag slice
+func dockerTagSlice(repo string) (dockerTags *DockerTag, err error){
+	resp, err := http.Get("https://registry.hub.docker.com/v1/repositories/" + repo + "/tags")
+	if err != nil {
+		panic(err)
+	}
+	defer resp.Body.Close()
+	dockerTags, err = decodeDockerTag(resp.Body)
+	return
 }
