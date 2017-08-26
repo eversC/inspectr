@@ -8,12 +8,18 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"strings"
 	"time"
 )
 
+//AvailableImageData type
+type AvailableImageData interface {
+	tag() string
+}
+
 //DockerTag type representing the json schema of docker registry versions page
 //e.g. https://registry.hub.docker.com/v1/repositories/eversc/inspectr/tags
-type DockerTag []struct {
+type DockerTag struct {
 	Layer string `json:"layer"`
 	Name  string `json:"name"`
 }
@@ -171,10 +177,44 @@ func main(){
 	}
 	imageToPodsMap := imageToPodsMap(jsonData)
 	postToSlack(fmt.Sprintf("%#v", imageToPodsMap), "[webhookId]")
+	//TODO: create string/slice map that'll contain the image string and available upgrades slice
+	for k, v := range imageToPodsMap{
+		//availImages, err := dockerTagSlice(strings.Split(k, ":")[0])
+		availImages, err := dockerTagSlice("eversc/inspectr")
+		fmt.Println(v)
+		if err != nil{
+			panic(err)
+		}
+		//TODO: add this to upgradeable string/slice map
+		upgradeCandidateSlice(strings.Split(k, ":")[1], []AvailableImageData(availImages))
+	}
 
-	dockerTagSlice, err := dockerTagSlice("eversc/inspectr")
-	postToSlack(fmt.Sprintf("%#v", dockerTagSlice), "[webhookId]")
+	//TODO: using upgradeable string/slice map, post out to slack
+	//postToSlack(fmt.Sprintf("%#v", dockerTagSlice), "[webhookId]")
 
+}
+
+//Dockertag implementation of AvailableImageData
+func (dockerTag DockerTag) tag() string {
+	return dockerTag.Name
+}
+
+//upgradeCandidateSlice returns a slice of AvailableImageData types that are deemed to be upgrades to the version
+//specified
+func upgradeCandidateSlice(version string, availImagesData []AvailableImageData) (upgradeCandidates []AvailableImageData){
+	for _, availImageData := range  availImagesData{
+		if upgradeable(version, availImageData.tag()){
+			upgradeCandidates = append(upgradeCandidates, availImageData)
+		}
+	}
+	return
+}
+
+//upgradeable returns a bool indicating if the tag represents an upgrade to the version
+func upgradeable(version, tag string) (upgradeable bool){
+	upgradeable = false
+	//TODO: rules for determining if the tag string indicates upgrade is possible
+	return
 }
 
 //podSlice returns a slice of Pod types, constructed from what's deemed to be valid pods in rs json from k8s master
@@ -245,9 +285,25 @@ func decodeData(r io.Reader) (x *Data, err error) {
 }
 
 //decodeDockerTag returns a DockerTag type, decoded from the specified Reader, and an error
-func decodeDockerTag(r io.Reader) (x *DockerTag, err error) {
-	x = new(DockerTag)
-	err = json.NewDecoder(r).Decode(x)
+func decodeDockerTag(r io.Reader) ([]DockerTag, error){
+	x := new([]DockerTag)
+	err := json.NewDecoder(r).Decode(x)
+	return *x, err
+}
+
+//dockerTagSlice returns a DockerTag slice
+func dockerTagSlice(repo string) (imagesData []AvailableImageData, err error){
+	resp, err := http.Get("https://registry.hub.docker.com/v1/repositories/" + repo + "/tags")
+	if err != nil {
+		panic(err)
+	}
+	defer resp.Body.Close()
+	dockerTags, err := decodeDockerTag(resp.Body)
+
+	for _, dockerTag := range []DockerTag(dockerTags){
+		imagesData = append(imagesData, dockerTag)
+		//imagesData[i] = dockerTag
+	}
 	return
 }
 
@@ -256,21 +312,10 @@ func decodeDockerTag(r io.Reader) (x *DockerTag, err error) {
 func postToSlack(text, webhookId string){
 	bytesBuff := new(bytes.Buffer)
 	slackMsg := SlackMsg{text, "inspectr"}
-    json.NewEncoder(bytesBuff).Encode(slackMsg)
+	json.NewEncoder(bytesBuff).Encode(slackMsg)
 	_, err := http.Post("https://hooks.slack.com/services/" + webhookId,
 		"application/json; charset=utf-8", bytesBuff)
 	if err != nil {
 		fmt.Print(err)
 	}
-}
-
-//dockerTagSlice returns a DockerTag slice
-func dockerTagSlice(repo string) (dockerTags *DockerTag, err error){
-	resp, err := http.Get("https://registry.hub.docker.com/v1/repositories/" + repo + "/tags")
-	if err != nil {
-		panic(err)
-	}
-	defer resp.Body.Close()
-	dockerTags, err = decodeDockerTag(resp.Body)
-	return
 }
