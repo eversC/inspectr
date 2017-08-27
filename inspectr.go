@@ -30,12 +30,13 @@ type SlackMsg struct {
 	Username string `json:"username"`
 }
 
-//Pod type
-type Pod struct {
-	ImageURI string
+//InspectrResult type
+type InspectrResult struct{
 	Name string
 	Namespace string
-	Phase string
+	Quantity int64
+	Upgrades []string
+	Version string
 }
 
 //Data type representing the json schema of https://[master]/api/v1/pods
@@ -165,7 +166,6 @@ type Data struct {
 
 func main(){
 	fmt.Println("hello inspectr")
-
 	bodyReader, err := bodyFromMaster()
 	if err != nil {
 		panic(err)
@@ -175,23 +175,32 @@ func main(){
 	if err != nil {
 		panic(err)
 	}
-	imageToPodsMap := imageToPodsMap(jsonData)
-	postToSlack(fmt.Sprintf("%#v", imageToPodsMap), "[webhookId]")
-	//TODO: create string/slice map that'll contain the image string and available upgrades slice
-	for k, v := range imageToPodsMap{
-		//availImages, err := dockerTagSlice(strings.Split(k, ":")[0])
-		availImages, err := dockerTagSlice("eversc/inspectr")
-		fmt.Println(v)
+	upgradesMap := upgradesMap(imageToResultsMap(jsonData))
+	postToSlack(fmt.Sprintf("%#v", upgradesMap), "[webhookId]")
+}
+
+//upgradesMap returns a string <--> []InspectrResult only for those images with upgrades available
+func upgradesMap(imageToResultsMap map[string][]InspectrResult) (upgradesMap map[string][]InspectrResult){
+	upgradesMap = make(map[string][]InspectrResult)
+	for k, v := range imageToResultsMap{
+		availImages, err := dockerTagSlice(k)
 		if err != nil{
 			panic(err)
 		}
-		//TODO: add this to upgradeable string/slice map
-		upgradeCandidateSlice(strings.Split(k, ":")[1], []AvailableImageData(availImages))
+		upgradesResults := make([]InspectrResult, 0)
+		for _, result := range v{
+			for _, upgradeVersion := range upgradeCandidateSlice(result.Version, []AvailableImageData(availImages)){
+				result.Upgrades = append(result.Upgrades, upgradeVersion.tag())
+			}
+			if len(result.Upgrades) > 0{
+				upgradesResults = append(upgradesResults, result)
+			}
+		}
+		if len(upgradesResults) > 0{
+			upgradesMap[k] = upgradesResults
+		}
 	}
-
-	//TODO: using upgradeable string/slice map, post out to slack
-	//postToSlack(fmt.Sprintf("%#v", dockerTagSlice), "[webhookId]")
-
+	return
 }
 
 //Dockertag implementation of AvailableImageData
@@ -212,20 +221,21 @@ func upgradeCandidateSlice(version string, availImagesData []AvailableImageData)
 
 //upgradeable returns a bool indicating if the tag represents an upgrade to the version
 func upgradeable(version, tag string) (upgradeable bool){
-	upgradeable = false
+	upgradeable = true
 	//TODO: rules for determining if the tag string indicates upgrade is possible
 	return
 }
 
-//podSlice returns a slice of Pod types, constructed from what's deemed to be valid pods in rs json from k8s master
-func imageToPodsMap(jsonData *Data) (imageToPodsMap map[string][]Pod){
+//imageToResultsMap returns a map of image <--> InspectrResult type, constructed from what's deemed to be valid pods
+// in rs json from k8s master
+func imageToResultsMap(jsonData *Data) (imageToResultsMap map[string][]InspectrResult){
 	var ignoreNamespaces = map[string]struct{}{
 		"kube-system": struct{}{},
 	}
 	var allowedPodPhases = map[string]struct{}{
 		"Running": struct{}{},
 	}
-	imageToPodsMap = make(map[string][]Pod)
+	imageToResultsMap = make(map[string][]InspectrResult)
 	for _, item := range jsonData.Items{
 		metadata := item.Metadata
 		namespace := metadata.Namespace
@@ -235,13 +245,16 @@ func imageToPodsMap(jsonData *Data) (imageToPodsMap map[string][]Pod){
 			_, ok := allowedPodPhases[phase]
 			if ok {
 				for _, container := range item.Spec.Containers {
-					image := container.Image
-					pod := Pod{image, metadata.Name, namespace, phase}
-					pods, _ := imageToPodsMap[image]
-					if !podSliceContains(pods, pod){
-						pods = append(pods, pod)
-						imageToPodsMap[image] = pods
+					image := imageFromURI(container.Image)
+					inspectrResult := InspectrResult{image, namespace, 1, nil,
+						versionFromURI(container.Image)}
+					inspectrResults, ok := imageToResultsMap[image]
+					if !ok {
+						inspectrResults = make([]InspectrResult, 0)
 					}
+
+					inspectrResults = addInspectrResult(inspectrResults, inspectrResult)
+					imageToResultsMap[image] = inspectrResults
 				}
 			}
 		}
@@ -249,16 +262,21 @@ func imageToPodsMap(jsonData *Data) (imageToPodsMap map[string][]Pod){
 	return
 }
 
-//podSliceContains returns a bool indicating whether the specified Pod is in the specified Pod slice
-func podSliceContains(pods []Pod, pod Pod) (podExists bool){
-	podExists = false
-	for _, slicePod := range pods{
-		if slicePod.ImageURI == pod.ImageURI && slicePod.Namespace == pod.Namespace{
-			podExists = true
+//addInspectrResult returns a slice of InspectrResult types, after either augmenting an existing item, or creating
+// a new one
+func addInspectrResult(inspectrResults []InspectrResult, inspectrResult InspectrResult) ([]InspectrResult){
+	augmented := false
+	for i, result := range inspectrResults{
+		if result.Namespace == inspectrResult.Namespace && result.Version == inspectrResult.Version{
+			inspectrResults[i].Quantity += 1
+			augmented = true
 			break
 		}
 	}
-	return
+	if !augmented{
+		inspectrResults = append(inspectrResults, inspectrResult)
+	}
+	return inspectrResults
 }
 
 //bodyFromMaster returns a ReadCloser from the k8s master's rs, and an error
@@ -318,4 +336,16 @@ func postToSlack(text, webhookId string){
 	if err != nil {
 		fmt.Print(err)
 	}
+}
+
+//imageFromURI returns the image 'name' from a URI. E.g. 'eversc/inspectr' from the URI: 'eversc/inspectr:v0.0.1-alpha'
+func imageFromURI(imageURI string)(image string) {
+	image = strings.Split(imageURI, ":")[0]
+	return
+}
+
+//versionFromURI returns the image tag from a URI. E.g. 'v0.0.1-alpha' from the URI: 'eversc/inspectr:v0.0.1-alpha'
+func versionFromURI(imageURI string)(version string){
+	version = strings.Split(imageURI, ":")[1]
+	return
 }
