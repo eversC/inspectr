@@ -8,12 +8,19 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"strconv"
+	"strings"
 	"time"
 )
 
+//AvailableImageData type
+type AvailableImageData interface {
+	tag() string
+}
+
 //DockerTag type representing the json schema of docker registry versions page
 //e.g. https://registry.hub.docker.com/v1/repositories/eversc/inspectr/tags
-type DockerTag []struct {
+type DockerTag struct {
 	Layer string `json:"layer"`
 	Name  string `json:"name"`
 }
@@ -24,12 +31,13 @@ type SlackMsg struct {
 	Username string `json:"username"`
 }
 
-//Pod type
-type Pod struct {
-	ImageURI string
+//InspectrResult type
+type InspectrResult struct{
 	Name string
 	Namespace string
-	Phase string
+	Quantity int64
+	Upgrades []string
+	Version string
 }
 
 //Data type representing the json schema of https://[master]/api/v1/pods
@@ -159,7 +167,6 @@ type Data struct {
 
 func main(){
 	fmt.Println("hello inspectr")
-
 	bodyReader, err := bodyFromMaster()
 	if err != nil {
 		panic(err)
@@ -169,23 +176,141 @@ func main(){
 	if err != nil {
 		panic(err)
 	}
-	imageToPodsMap := imageToPodsMap(jsonData)
-	postToSlack(fmt.Sprintf("%#v", imageToPodsMap), "[webhookId]")
-
-	dockerTagSlice, err := dockerTagSlice("eversc/inspectr")
-	postToSlack(fmt.Sprintf("%#v", dockerTagSlice), "[webhookId]")
-
+	upgradesMap := upgradesMap(imageToResultsMap(jsonData))
+	postToSlack(fmt.Sprintf("%#v", upgradesMap), "[webhookId]")
 }
 
-//podSlice returns a slice of Pod types, constructed from what's deemed to be valid pods in rs json from k8s master
-func imageToPodsMap(jsonData *Data) (imageToPodsMap map[string][]Pod){
+//upgradesMap returns a string <--> []InspectrResult only for those images with upgrades available
+func upgradesMap(imageToResultsMap map[string][]InspectrResult) (upgradesMap map[string][]InspectrResult){
+	upgradesMap = make(map[string][]InspectrResult)
+	for k, v := range imageToResultsMap{
+		availImages, err := dockerTagSlice(k)
+		if err != nil{
+			panic(err)
+		}
+		upgradesResults := make([]InspectrResult, 0)
+		for _, result := range v{
+			for _, upgradeVersion := range upgradeCandidateSlice(result.Version, []AvailableImageData(availImages)){
+				result.Upgrades = append(result.Upgrades, upgradeVersion.tag())
+			}
+			if len(result.Upgrades) > 0{
+				upgradesResults = append(upgradesResults, result)
+			}
+		}
+		if len(upgradesResults) > 0{
+			upgradesMap[k] = upgradesResults
+		}
+	}
+	return
+}
+
+//Dockertag implementation of AvailableImageData
+func (dockerTag DockerTag) tag() string {
+	return dockerTag.Name
+}
+
+//upgradeCandidateSlice returns a slice of AvailableImageData types that are deemed to be upgrades to the version
+//specified
+func upgradeCandidateSlice(version string, availImagesData []AvailableImageData) (upgradeCandidates []AvailableImageData){
+	versionPrefix := versionPrefix(version)
+	suffix := suffix(version)
+	versionNumerics := versionNumerics(version, suffix, versionPrefix)
+	for _, availImageData := range  availImagesData{
+		if upgradeable(versionNumerics, availImageData.tag(), suffix, versionPrefix){
+			upgradeCandidates = append(upgradeCandidates, availImageData)
+		}
+	}
+	return
+}
+
+//versionPrefix returns a bool indicating whether the specified string is prefixed with "v"
+func versionPrefix(version string)(versionPrefix bool){
+	versionPrefix = strings.HasPrefix(version, "v")
+	return
+}
+
+//suffix returns the suffix of the string, with the suffix being anything after (and including) a hyphen at the tail
+// end of the string
+func suffix(version string)(suffix string){
+	suffixStrings := strings.Split(version, "-")
+	if len(suffixStrings) > 1{
+		suffix = suffixStrings[1]
+	}
+	return
+}
+
+//versionNumerics returns a slice of the numerical values in the specified version string
+func versionNumerics(version, suffix string, versionPrefix bool)(versionNumerics []int){
+	versionNumeric := version
+	if versionPrefix{
+		versionNumeric = versionNumeric[1:len(versionNumeric) - 1]
+	}
+	versionNumeric = strings.Trim(versionNumeric, suffix)
+	versionStringSlice := strings.Split(versionNumeric, ".")
+	for _,versionString := range versionStringSlice{
+		if numeric, err := strconv.Atoi(versionString); err == nil {
+			versionNumerics = append(versionNumerics, numeric)
+		}
+	}
+	return
+}
+
+//upgradeable returns a bool indicating if the tag represents an upgrade to the version
+func upgradeable(versionNumerics []int, tag, suffix string, versionPrefix bool) (upgradeable bool){
+	var ignoreTags = map[string]struct{}{
+		"latest": struct{}{},
+	}
+	_, ok := ignoreTags[tag]
+	if !ok && prefixSuffixMatch(tag, suffix, versionPrefix){
+		upgradeable = numericalVersionUpgrade(versionNumerics, tag, suffix, versionPrefix)
+	}
+	return
+}
+
+//numericalVersionUpgrade returns a boolean after attempting to match 2 slices of version numerics together.
+// If a match is going to be found, there must exist the same number of numeric values
+//  e.g. 2.60.2 would match 2.60.3, but 2.60.2 wouldn't match 2.61
+// There also has to be a numeric in the 'tag' slice (potential upgrade target) that is greater than the current
+// version slice
+//  e.g. 2.61.0 is an upgrade to 2.60.3 as the numeric in index=1 is greater. 2.60.2 wouldn't be an upgrade as none of
+//  the numerical values (in any index) are greater than in its counterpart
+func numericalVersionUpgrade(versionNumericValues []int, tag, suffix string, versionPrefix bool)(numericUpgrade bool){
+	tagNumerics := versionNumerics(tag, suffix, versionPrefix)
+	if len(versionNumericValues) == len(tagNumerics){
+		for i, versionNumeric := range versionNumericValues{
+			if tagNumerics[i] > versionNumeric{
+				numericUpgrade = true
+				break
+			}
+		}
+	}
+	return
+}
+
+//prefixSuffixMatch returns a bool indicating whether the tag string exhibits the same prefix/suffix properties as
+// those specified
+func prefixSuffixMatch(tag, suffixx string, versionPrefixx bool)(prefixSuffixMatch bool){
+	prefixMatch := false
+	tagPrefix := versionPrefix(tag)
+	if versionPrefixx {
+		prefixMatch = tagPrefix
+	}else{
+		prefixMatch = !tagPrefix
+	}
+	prefixSuffixMatch = prefixMatch && suffixx == suffix(tag)
+	return
+}
+
+//imageToResultsMap returns a map of image <--> InspectrResult type, constructed from what's deemed to be valid pods
+// in rs json from k8s master
+func imageToResultsMap(jsonData *Data) (imageToResultsMap map[string][]InspectrResult){
 	var ignoreNamespaces = map[string]struct{}{
 		"kube-system": struct{}{},
 	}
 	var allowedPodPhases = map[string]struct{}{
 		"Running": struct{}{},
 	}
-	imageToPodsMap = make(map[string][]Pod)
+	imageToResultsMap = make(map[string][]InspectrResult)
 	for _, item := range jsonData.Items{
 		metadata := item.Metadata
 		namespace := metadata.Namespace
@@ -195,13 +320,16 @@ func imageToPodsMap(jsonData *Data) (imageToPodsMap map[string][]Pod){
 			_, ok := allowedPodPhases[phase]
 			if ok {
 				for _, container := range item.Spec.Containers {
-					image := container.Image
-					pod := Pod{image, metadata.Name, namespace, phase}
-					pods, _ := imageToPodsMap[image]
-					if !podSliceContains(pods, pod){
-						pods = append(pods, pod)
-						imageToPodsMap[image] = pods
+					image := imageFromURI(container.Image)
+					inspectrResult := InspectrResult{image, namespace, 1, nil,
+						versionFromURI(container.Image)}
+					inspectrResults, ok := imageToResultsMap[image]
+					if !ok {
+						inspectrResults = make([]InspectrResult, 0)
 					}
+
+					inspectrResults = addInspectrResult(inspectrResults, inspectrResult)
+					imageToResultsMap[image] = inspectrResults
 				}
 			}
 		}
@@ -209,16 +337,21 @@ func imageToPodsMap(jsonData *Data) (imageToPodsMap map[string][]Pod){
 	return
 }
 
-//podSliceContains returns a bool indicating whether the specified Pod is in the specified Pod slice
-func podSliceContains(pods []Pod, pod Pod) (podExists bool){
-	podExists = false
-	for _, slicePod := range pods{
-		if slicePod.ImageURI == pod.ImageURI && slicePod.Namespace == pod.Namespace{
-			podExists = true
+//addInspectrResult returns a slice of InspectrResult types, after either augmenting an existing item, or creating
+// a new one
+func addInspectrResult(inspectrResults []InspectrResult, inspectrResult InspectrResult) ([]InspectrResult){
+	augmented := false
+	for i, result := range inspectrResults{
+		if result.Namespace == inspectrResult.Namespace && result.Version == inspectrResult.Version{
+			inspectrResults[i].Quantity += 1
+			augmented = true
 			break
 		}
 	}
-	return
+	if !augmented{
+		inspectrResults = append(inspectrResults, inspectrResult)
+	}
+	return inspectrResults
 }
 
 //bodyFromMaster returns a ReadCloser from the k8s master's rs, and an error
@@ -245,9 +378,25 @@ func decodeData(r io.Reader) (x *Data, err error) {
 }
 
 //decodeDockerTag returns a DockerTag type, decoded from the specified Reader, and an error
-func decodeDockerTag(r io.Reader) (x *DockerTag, err error) {
-	x = new(DockerTag)
-	err = json.NewDecoder(r).Decode(x)
+func decodeDockerTag(r io.Reader) ([]DockerTag, error){
+	x := new([]DockerTag)
+	err := json.NewDecoder(r).Decode(x)
+	return *x, err
+}
+
+//dockerTagSlice returns a DockerTag slice
+func dockerTagSlice(repo string) (imagesData []AvailableImageData, err error){
+	resp, err := http.Get("https://registry.hub.docker.com/v1/repositories/" + repo + "/tags")
+	if err != nil {
+		panic(err)
+	}
+	defer resp.Body.Close()
+	dockerTags, err := decodeDockerTag(resp.Body)
+
+	for _, dockerTag := range []DockerTag(dockerTags){
+		imagesData = append(imagesData, dockerTag)
+		//imagesData[i] = dockerTag
+	}
 	return
 }
 
@@ -256,7 +405,7 @@ func decodeDockerTag(r io.Reader) (x *DockerTag, err error) {
 func postToSlack(text, webhookId string){
 	bytesBuff := new(bytes.Buffer)
 	slackMsg := SlackMsg{text, "inspectr"}
-    json.NewEncoder(bytesBuff).Encode(slackMsg)
+	json.NewEncoder(bytesBuff).Encode(slackMsg)
 	_, err := http.Post("https://hooks.slack.com/services/" + webhookId,
 		"application/json; charset=utf-8", bytesBuff)
 	if err != nil {
@@ -264,13 +413,14 @@ func postToSlack(text, webhookId string){
 	}
 }
 
-//dockerTagSlice returns a DockerTag slice
-func dockerTagSlice(repo string) (dockerTags *DockerTag, err error){
-	resp, err := http.Get("https://registry.hub.docker.com/v1/repositories/" + repo + "/tags")
-	if err != nil {
-		panic(err)
-	}
-	defer resp.Body.Close()
-	dockerTags, err = decodeDockerTag(resp.Body)
+//imageFromURI returns the image 'name' from a URI. E.g. 'eversc/inspectr' from the URI: 'eversc/inspectr:v0.0.1-alpha'
+func imageFromURI(imageURI string)(image string) {
+	image = strings.Split(imageURI, ":")[0]
+	return
+}
+
+//versionFromURI returns the image tag from a URI. E.g. 'v0.0.1-alpha' from the URI: 'eversc/inspectr:v0.0.1-alpha'
+func versionFromURI(imageURI string)(version string){
+	version = strings.Split(imageURI, ":")[1]
 	return
 }
