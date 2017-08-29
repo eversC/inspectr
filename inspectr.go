@@ -167,17 +167,136 @@ type Data struct {
 
 func main(){
 	fmt.Println("hello inspectr")
-	bodyReader, err := bodyFromMaster()
-	if err != nil {
-		panic(err)
+	registeredImages := make(map[string][]string)
+
+	for {
+		bodyReader, err := bodyFromMaster()
+		if err != nil {
+			panic(err)
+		}
+		defer bodyReader.Close()
+		jsonData, err := decodeData(bodyReader)
+		if err != nil {
+			panic(err)
+		}
+		upgradesMap := upgradesMap(imageToResultsMap(jsonData))
+		withinAlertWindow := withinAlertWindow()
+		upgradesMap = filterUpgradesMap(upgradesMap, registeredImages, withinAlertWindow)
+		augmentInternalImageRegistry(upgradesMap, registeredImages, withinAlertWindow)
+		postToSlack(fmt.Sprintf("%#v", upgradesMap), "[webhookId]")
+		time.Sleep(time.Duration(sleepTime(withinAlertWindow))*time.Second)
 	}
-	defer bodyReader.Close()
-	jsonData, err := decodeData(bodyReader)
-	if err != nil {
-		panic(err)
+}
+
+//sleepTime returns an int of the number of seconds to go to sleep for. Sleep is needed so the process isn't
+// constantly running, and doesn't run more than once in the alert window
+func sleepTime(withinAlertWindow bool)(sleepTime int){
+	if withinAlertWindow{
+		sleepTime = 360
+	}else{
+		sleepTime = 60
 	}
-	upgradesMap := upgradesMap(imageToResultsMap(jsonData))
-	postToSlack(fmt.Sprintf("%#v", upgradesMap), "[webhookId]")
+	return
+}
+
+//withinAlertWindow returns a bool indicating whether current time is within the scheduled daily/weekly alert window
+func withinAlertWindow()(withinAlertWindow bool){
+	//TODO: get a weekday value (from env var?)
+	weekday := -1
+	now := time.Now()
+	preferredAlertTime := time.Date(int(now.Year()), now.Month(), int(now.Day()),
+		11, 30, 0, 0, now.Location())
+	windowSize := 300
+	windowEnd := preferredAlertTime.Add(time.Duration(windowSize)*time.Second)
+	if weekday == -1 || int(now.Weekday()) == weekday{
+		withinAlertWindow = now.After(preferredAlertTime) && now.Before(windowEnd)
+	}
+	return
+}
+
+//filterUpgradesMap returns a map which is based on the one specified, but has any already registered upgrade
+// opportunities removed. If we're withinAlertWindow, no filtering happens
+func filterUpgradesMap(upgradesMap map[string][]InspectrResult, registeredImages map[string][]string,
+	withinAlertWindow bool)(filteredMap map[string][]InspectrResult){
+
+	if withinAlertWindow{
+		filteredMap = upgradesMap
+	}else{
+		filteredMap = make(map[string][]InspectrResult)
+		for k, v := range upgradesMap{
+			registeredResults, ok := registeredImages[k]
+			if ok{
+				filteredSlice := make([]InspectrResult, 0)
+				for _, result := range v{
+					if !sliceContainsResult(registeredResults, result){
+						filteredSlice = append(filteredSlice, result)
+					}
+				}
+				if len(filteredSlice) > 0{
+					filteredMap[k] = filteredSlice
+				}
+			}else{
+				filteredMap[k] = v
+			}
+		}
+	}
+	return
+}
+
+func sliceContainsResult(registeredResults []string, result InspectrResult)(containsResult bool){
+	for _, registeredResult := range registeredResults{
+		splitStrings := strings.Split(registeredResult, "|")
+		if splitStrings[0] == result.Version && splitStrings[1] == result.Namespace{
+			containsResult = true
+			break
+		}
+	}
+	return
+}
+
+func augmentInternalImageRegistry(upgradesMap map[string][]InspectrResult, registeredImageMap map[string][]string,
+	withinAlertWindow bool){
+
+	if withinAlertWindow{
+		registeredImageMap = registeredImages(upgradesMap)
+	}else{
+		for k, v := range upgradesMap{
+			registeredResults, ok := registeredImageMap[k]
+			if ok{
+				for _, result := range v{
+					if !sliceContainsResult(registeredResults, result){
+						registeredResults = append(registeredResults, registeredImageString(result))
+						registeredImageMap[k] = registeredResults
+					}
+				}
+			}else{
+				registeredImageMap[k] = stringSliceFromResultSlice(v)
+			}
+		}
+	}
+}
+
+func registeredImages(upgradesMap map[string][]InspectrResult)(registeredImages map[string][]string){
+	for k, v := range upgradesMap{
+		registeredImageSlice := make([]string, 0)
+		for _, upgradeResult := range v{
+			registeredImageSlice = append(registeredImageSlice, registeredImageString(upgradeResult))
+		}
+		registeredImages[k] = registeredImageSlice
+	}
+	return
+}
+
+func stringSliceFromResultSlice(resultSlice []InspectrResult)(registeredResults []string){
+	for _, result := range resultSlice{
+		registeredResults = append(registeredResults, registeredImageString(result))
+	}
+	return
+}
+
+func registeredImageString(result InspectrResult)(resultString string){
+	resultString = result.Version + "|" + result.Namespace
+	return
 }
 
 //upgradesMap returns a string <--> []InspectrResult only for those images with upgrades available
@@ -190,7 +309,7 @@ func upgradesMap(imageToResultsMap map[string][]InspectrResult) (upgradesMap map
 		}
 		upgradesResults := make([]InspectrResult, 0)
 		for _, result := range v{
-			for _, upgradeVersion := range upgradeCandidateSlice(result.Version, []AvailableImageData(availImages)){
+			for _, upgradeVersion := range upgradeCandidateSlice("2.60.2", []AvailableImageData(availImages)){
 				result.Upgrades = append(result.Upgrades, upgradeVersion.tag())
 			}
 			if len(result.Upgrades) > 0{
@@ -322,7 +441,7 @@ func imageToResultsMap(jsonData *Data) (imageToResultsMap map[string][]InspectrR
 				for _, container := range item.Spec.Containers {
 					image := imageFromURI(container.Image)
 					inspectrResult := InspectrResult{image, namespace, 1, nil,
-						versionFromURI(container.Image)}
+													 versionFromURI(container.Image)}
 					inspectrResults, ok := imageToResultsMap[image]
 					if !ok {
 						inspectrResults = make([]InspectrResult, 0)
