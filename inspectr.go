@@ -3,11 +3,13 @@ package main
 import (
 	"bytes"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"github.com/golang/glog"
 	"io"
+	"io/ioutil"
 	"net"
 	"net/http"
 	"os"
@@ -497,15 +499,30 @@ func addInspectrResult(inspectrResults []InspectrResult, inspectrResult Inspectr
 
 //bodyFromMaster returns a ReadCloser from the k8s master's rs, and an error
 func bodyFromMaster() (r io.ReadCloser, err error){
-	tr := &http.Transport{
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-	}
-	client := &http.Client{Transport: tr}
-	req, _ := http.NewRequest("GET", "https://[master ip]/api/v1/pods", nil)
-	req.Header.Set("Authorization", "Bearer [token]")
-	resp, err := client.Do(req)
-	if err == nil {
-		r = resp.Body
+	err = nil
+	var caCert []byte
+	caCert, err = ioutil.ReadFile("/var/run/secrets/kubernetes.io/serviceaccount/ca.crt")
+	if err == nil{
+		caCertPool := x509.NewCertPool()
+		caCertPool.AppendCertsFromPEM(caCert)
+		client := &http.Client{
+			Transport: &http.Transport{
+				TLSClientConfig: &tls.Config{
+					RootCAs:      caCertPool,
+				},
+			},
+		}
+		req, _ := http.NewRequest("GET", "https://kubernetes.default/api/v1/pods", nil)
+		var token []byte
+		token, err = ioutil.ReadFile("/var/run/secrets/kubernetes.io/serviceaccount/token")
+		if err == nil {
+			req.Header.Set("Authorization", "Bearer " + string(token))
+			var resp *http.Response
+			resp, err = client.Do(req)
+			if err == nil {
+				r = resp.Body
+			}
+		}
 	}
 	return
 }
