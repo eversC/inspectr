@@ -8,6 +8,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -168,7 +169,9 @@ type Data struct {
 func main(){
 	fmt.Println("hello inspectr")
 	registeredImages := make(map[string][]string)
-
+	envKey := "INSPECTR_SLACK_WEBHOOK_ID"
+	webhookId := os.Getenv(envKey)
+	os.Setenv(envKey, "")
 	for {
 		bodyReader, err := bodyFromMaster()
 		if err != nil {
@@ -183,7 +186,7 @@ func main(){
 		withinAlertWindow := withinAlertWindow()
 		upgradesMap = filterUpgradesMap(upgradesMap, registeredImages, withinAlertWindow)
 		augmentInternalImageRegistry(upgradesMap, registeredImages, withinAlertWindow)
-		postToSlack(fmt.Sprintf("%#v", upgradesMap), "[webhookId]")
+		postToSlack(fmt.Sprintf("%#v", upgradesMap), webhookId)
 		time.Sleep(time.Duration(sleepTime(withinAlertWindow))*time.Second)
 	}
 }
