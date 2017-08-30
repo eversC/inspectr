@@ -243,6 +243,7 @@ func filterUpgradesMap(upgradesMap map[string][]InspectrResult, registeredImages
 	return
 }
 
+//sliceContainsResult returns a bool indicating whether the specified InspectrResult is 'registered' in the string slice
 func sliceContainsResult(registeredResults []string, result InspectrResult)(containsResult bool){
 	for _, registeredResult := range registeredResults{
 		splitStrings := strings.Split(registeredResult, "|")
@@ -254,6 +255,8 @@ func sliceContainsResult(registeredResults []string, result InspectrResult)(cont
 	return
 }
 
+//augmentInternalImageRegistry will, based on whether we're withinAlertWindow, replace the registeredImageMap or
+// augment it with any InspectrResults that are missing, respectively
 func augmentInternalImageRegistry(upgradesMap map[string][]InspectrResult, registeredImageMap map[string][]string,
 	withinAlertWindow bool){
 
@@ -276,6 +279,7 @@ func augmentInternalImageRegistry(upgradesMap map[string][]InspectrResult, regis
 	}
 }
 
+//registeredImages returns a string<-->string map that reflects the string<-->[]InspectrResult map
 func registeredImages(upgradesMap map[string][]InspectrResult)(registeredImages map[string][]string){
 	for k, v := range upgradesMap{
 		registeredImageSlice := make([]string, 0)
@@ -287,6 +291,7 @@ func registeredImages(upgradesMap map[string][]InspectrResult)(registeredImages 
 	return
 }
 
+//stringSliceFromResultSlice returns a string slice that represents the specified []InspectrResult
 func stringSliceFromResultSlice(resultSlice []InspectrResult)(registeredResults []string){
 	for _, result := range resultSlice{
 		registeredResults = append(registeredResults, registeredImageString(result))
@@ -294,6 +299,8 @@ func stringSliceFromResultSlice(resultSlice []InspectrResult)(registeredResults 
 	return
 }
 
+//registeredImageString returns a string consisting of [result.Version]|[result.Namespace], helpful for the
+// image registry cache
 func registeredImageString(result InspectrResult)(resultString string){
 	resultString = result.Version + "|" + result.Namespace
 	return
@@ -309,7 +316,7 @@ func upgradesMap(imageToResultsMap map[string][]InspectrResult) (upgradesMap map
 		}
 		upgradesResults := make([]InspectrResult, 0)
 		for _, result := range v{
-			for _, upgradeVersion := range upgradeCandidateSlice("2.60.2", []AvailableImageData(availImages)){
+			for _, upgradeVersion := range upgradeCandidateSlice(result.Version, []AvailableImageData(availImages)){
 				result.Upgrades = append(result.Upgrades, upgradeVersion.tag())
 			}
 			if len(result.Upgrades) > 0{
