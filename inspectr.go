@@ -174,7 +174,6 @@ func main(){
 	registeredImages := make(map[string][]string)
 	envKey := "INSPECTR_SLACK_WEBHOOK_ID"
 	webhookId := os.Getenv(envKey)
-	os.Setenv(envKey, "")
 	sleepOnError := 300
 	for {
 		jsonData, err := jsonData()
