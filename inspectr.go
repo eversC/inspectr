@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"crypto/tls"
 	"encoding/json"
+	"flag"
 	"fmt"
+	"github.com/golang/glog"
 	"io"
 	"net"
 	"net/http"
@@ -167,28 +169,39 @@ type Data struct {
 }
 
 func main(){
-	fmt.Println("hello inspectr")
+	flag.Parse()
+	glog.Info("hello inspectr")
 	registeredImages := make(map[string][]string)
 	envKey := "INSPECTR_SLACK_WEBHOOK_ID"
 	webhookId := os.Getenv(envKey)
-	os.Setenv(envKey, "")
+	sleepOnError := 300
 	for {
-		bodyReader, err := bodyFromMaster()
+		jsonData, err := jsonData()
 		if err != nil {
-			panic(err)
+			glog.Error(err)
+			time.Sleep(time.Duration(sleepOnError)*time.Second)
+			continue
 		}
-		defer bodyReader.Close()
-		jsonData, err := decodeData(bodyReader)
+		upgradesMap, err := upgradesMap(imageToResultsMap(jsonData))
 		if err != nil {
-			panic(err)
+			glog.Error(err)
+			time.Sleep(time.Duration(sleepOnError)*time.Second)
+			continue
 		}
-		upgradesMap := upgradesMap(imageToResultsMap(jsonData))
 		withinAlertWindow := withinAlertWindow()
 		upgradesMap = filterUpgradesMap(upgradesMap, registeredImages, withinAlertWindow)
 		augmentInternalImageRegistry(upgradesMap, registeredImages, withinAlertWindow)
 		postToSlack(fmt.Sprintf("%#v", upgradesMap), webhookId)
 		time.Sleep(time.Duration(sleepTime(withinAlertWindow))*time.Second)
 	}
+}
+
+//jsonData returns a Data struct based on what k8s master returns, and an error
+func jsonData()(jsonData *Data, err error){
+	bodyReader, err := bodyFromMaster()
+	defer bodyReader.Close()
+	jsonData, err = decodeData(bodyReader)
+	return jsonData, err
 }
 
 //sleepTime returns an int of the number of seconds to go to sleep for. Sleep is needed so the process isn't
@@ -310,24 +323,23 @@ func registeredImageString(result InspectrResult)(resultString string){
 }
 
 //upgradesMap returns a string <--> []InspectrResult only for those images with upgrades available
-func upgradesMap(imageToResultsMap map[string][]InspectrResult) (upgradesMap map[string][]InspectrResult){
+func upgradesMap(imageToResultsMap map[string][]InspectrResult) (upgradesMap map[string][]InspectrResult, err error){
 	upgradesMap = make(map[string][]InspectrResult)
 	for k, v := range imageToResultsMap{
 		availImages, err := dockerTagSlice(k)
-		if err != nil{
-			panic(err)
-		}
-		upgradesResults := make([]InspectrResult, 0)
-		for _, result := range v{
-			for _, upgradeVersion := range upgradeCandidateSlice(result.Version, []AvailableImageData(availImages)){
-				result.Upgrades = append(result.Upgrades, upgradeVersion.tag())
+		if err == nil{
+			upgradesResults := make([]InspectrResult, 0)
+			for _, result := range v{
+				for _, upgradeVersion := range upgradeCandidateSlice(result.Version, []AvailableImageData(availImages)){
+					result.Upgrades = append(result.Upgrades, upgradeVersion.tag())
+				}
+				if len(result.Upgrades) > 0{
+					upgradesResults = append(upgradesResults, result)
+				}
 			}
-			if len(result.Upgrades) > 0{
-				upgradesResults = append(upgradesResults, result)
+			if len(upgradesResults) > 0{
+				upgradesMap[k] = upgradesResults
 			}
-		}
-		if len(upgradesResults) > 0{
-			upgradesMap[k] = upgradesResults
 		}
 	}
 	return
@@ -492,10 +504,9 @@ func bodyFromMaster() (r io.ReadCloser, err error){
 	req, _ := http.NewRequest("GET", "https://[master ip]/api/v1/pods", nil)
 	req.Header.Set("Authorization", "Bearer [token]")
 	resp, err := client.Do(req)
-	if err != nil {
-		panic(err)
+	if err == nil {
+		r = resp.Body
 	}
-	r = resp.Body
 	return
 }
 
@@ -515,16 +526,17 @@ func decodeDockerTag(r io.Reader) ([]DockerTag, error){
 
 //dockerTagSlice returns a DockerTag slice
 func dockerTagSlice(repo string) (imagesData []AvailableImageData, err error){
+	err = nil
 	resp, err := http.Get("https://registry.hub.docker.com/v1/repositories/" + repo + "/tags")
-	if err != nil {
-		panic(err)
-	}
-	defer resp.Body.Close()
-	dockerTags, err := decodeDockerTag(resp.Body)
+	if err == nil {
+		defer resp.Body.Close()
+		var dockerTags []DockerTag
+		dockerTags, err = decodeDockerTag(resp.Body)
 
-	for _, dockerTag := range []DockerTag(dockerTags){
-		imagesData = append(imagesData, dockerTag)
-		//imagesData[i] = dockerTag
+		for _, dockerTag := range []DockerTag(dockerTags){
+			imagesData = append(imagesData, dockerTag)
+			//imagesData[i] = dockerTag
+		}
 	}
 	return
 }
