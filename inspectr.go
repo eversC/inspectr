@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/tls"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"github.com/golang/glog"
 	"io"
@@ -13,7 +14,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	"flag"
 )
 
 //AvailableImageData type
