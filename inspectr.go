@@ -176,25 +176,26 @@ func main(){
 	registeredImages := make(map[string][]string)
 	envKey := "INSPECTR_SLACK_WEBHOOK_ID"
 	webhookID := os.Getenv(envKey)
-	sleepOnError := 300
+	sleep := 300
 	for {
-		jsonData, err := jsonData()
-		if err != nil {
-			glog.Error(err)
-			time.Sleep(time.Duration(sleepOnError)*time.Second)
-			continue
+		var k8sJsonData *Data
+		var err error
+		k8sJsonData, err = jsonData()
+		if err == nil{
+			var upgradeMap map[string][]InspectrResult
+			upgradeMap, err = upgradesMap(imageToResultsMap(k8sJsonData))
+			if err == nil{
+				withinAlertWindow := withinAlertWindow()
+				upgradeMap = filterUpgradesMap(upgradeMap, registeredImages, withinAlertWindow)
+				augmentInternalImageRegistry(upgradeMap, registeredImages, withinAlertWindow)
+				postToSlack(fmt.Sprintf("%#v", upgradeMap), webhookID)
+				sleep = sleepTime(withinAlertWindow)
+			}
 		}
-		upgradesMap, err := upgradesMap(imageToResultsMap(jsonData))
-		if err != nil {
+		if err != nil{
 			glog.Error(err)
-			time.Sleep(time.Duration(sleepOnError)*time.Second)
-			continue
 		}
-		withinAlertWindow := withinAlertWindow()
-		upgradesMap = filterUpgradesMap(upgradesMap, registeredImages, withinAlertWindow)
-		augmentInternalImageRegistry(upgradesMap, registeredImages, withinAlertWindow)
-		postToSlack(fmt.Sprintf("%#v", upgradesMap), webhookID)
-		time.Sleep(time.Duration(sleepTime(withinAlertWindow))*time.Second)
+		time.Sleep(time.Duration(sleep)*time.Second)
 	}
 }
 
