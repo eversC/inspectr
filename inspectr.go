@@ -203,7 +203,7 @@ func invokeInspectrProcess(registeredImages *map[string][]string, webhookID stri
 		}
 	}
 	if err != nil{
-		glog.Error(err)
+		glog.Error(err, ", going to sleep for " + strconv.Itoa(sleep) + " seconds")
 	}
 	return
 }
@@ -211,8 +211,10 @@ func invokeInspectrProcess(registeredImages *map[string][]string, webhookID stri
 //jsonData returns a Data struct based on what k8s master returns, and an error
 func jsonData()(jsonData *Data, err error){
 	bodyReader, err := bodyFromMaster()
-	defer bodyReader.Close()
-	jsonData, err = decodeData(bodyReader)
+	if err == nil{
+		jsonData, err = decodeData(bodyReader)
+		bodyReader.Close()
+	}
 	return jsonData, err
 }
 
