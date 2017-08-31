@@ -176,27 +176,36 @@ func main(){
 	registeredImages := make(map[string][]string)
 	envKey := "INSPECTR_SLACK_WEBHOOK_ID"
 	webhookID := os.Getenv(envKey)
-	sleep := 300
 	for {
-		var k8sJsonData *Data
-		var err error
-		k8sJsonData, err = jsonData()
-		if err == nil{
-			var upgradeMap map[string][]InspectrResult
-			upgradeMap, err = upgradesMap(imageToResultsMap(k8sJsonData))
-			if err == nil{
-				withinAlertWindow := withinAlertWindow()
-				upgradeMap = filterUpgradesMap(upgradeMap, registeredImages, withinAlertWindow)
-				augmentInternalImageRegistry(upgradeMap, registeredImages, withinAlertWindow)
-				postToSlack(fmt.Sprintf("%#v", upgradeMap), webhookID)
-				sleep = sleepTime(withinAlertWindow)
-			}
-		}
-		if err != nil{
-			glog.Error(err)
-		}
-		time.Sleep(time.Duration(sleep)*time.Second)
+		time.Sleep(time.Duration(invokeInspectrProcess(&registeredImages, webhookID))*time.Second)
 	}
+}
+
+//invokeInspectrProcess attempts to run through as much of the 'process' as it can. At appropriate points it may
+// abort if it sees an error. If this happens, the error is logged, and a default/long time is returned as the sleep
+// value.
+// if everything goes okay, the sleep value returned is either pretty small (as inspectr should be quick to detect
+// any 'unregistered' images, or a bit longer if current time is withinAlertWindow
+func invokeInspectrProcess(registeredImages *map[string][]string, webhookID string)(sleep int){
+	sleep = 300
+	var k8sJsonData *Data
+	var err error
+	k8sJsonData, err = jsonData()
+	if err == nil{
+		var upgradeMap map[string][]InspectrResult
+		upgradeMap, err = upgradesMap(imageToResultsMap(k8sJsonData))
+		if err == nil{
+			withinAlertWindow := withinAlertWindow()
+			upgradeMap = filterUpgradesMap(upgradeMap, *registeredImages, withinAlertWindow)
+			augmentInternalImageRegistry(upgradeMap, *registeredImages, withinAlertWindow)
+			postToSlack(fmt.Sprintf("%#v", upgradeMap), webhookID)
+			sleep = sleepTime(withinAlertWindow)
+		}
+	}
+	if err != nil{
+		glog.Error(err)
+	}
+	return
 }
 
 //jsonData returns a Data struct based on what k8s master returns, and an error
@@ -333,7 +342,7 @@ func upgradesMap(imageToResultsMap map[string][]InspectrResult) (upgradesMap map
 		if err == nil{
 			upgradesResults := make([]InspectrResult, 0)
 			for _, result := range v{
-				for _, upgradeVersion := range upgradeCandidateSlice(result.Version, []AvailableImageData(availImages)){
+				for _, upgradeVersion := range upgradeCandidateSlice("2.60.2", []AvailableImageData(availImages)){
 					result.Upgrades = append(result.Upgrades, upgradeVersion.tag())
 				}
 				if len(result.Upgrades) > 0{
