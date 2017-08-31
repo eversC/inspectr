@@ -188,12 +188,12 @@ func main(){
 // any 'unregistered' images, or a bit longer if current time is withinAlertWindow
 func invokeInspectrProcess(registeredImages *map[string][]string, webhookID string)(sleep int){
 	sleep = 300
-	var k8sJsonData *Data
+	var k8sJSONData *Data
 	var err error
-	k8sJsonData, err = jsonData()
+	k8sJSONData, err = jsonData()
 	if err == nil{
 		var upgradeMap map[string][]InspectrResult
-		upgradeMap, err = upgradesMap(imageToResultsMap(k8sJsonData))
+		upgradeMap, err = upgradesMap(imageToResultsMap(k8sJSONData))
 		if err == nil{
 			withinAlertWindow := withinAlertWindow()
 			upgradeMap = filterUpgradesMap(upgradeMap, *registeredImages, withinAlertWindow)
