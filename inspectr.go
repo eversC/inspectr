@@ -210,6 +210,7 @@ func invokeInspectrProcess(registeredImages *map[string][]string, webhookID stri
 
 //jsonData returns a Data struct based on what k8s master returns, and an error
 func jsonData()(jsonData *Data, err error){
+	glog.Info("about to call bodyFromMaster()")
 	bodyReader, err := bodyFromMaster()
 	if err == nil{
 		jsonData, err = decodeData(bodyReader)
@@ -511,6 +512,7 @@ func addInspectrResult(inspectrResults []InspectrResult, inspectrResult Inspectr
 
 //bodyFromMaster returns a ReadCloser from the k8s master's rs, and an error
 func bodyFromMaster() (r io.ReadCloser, err error){
+	glog.Info("about to call k8s /api/v1/pods")
 	err = nil
 	var caCert []byte
 	caCert, err = ioutil.ReadFile("/var/run/secrets/kubernetes.io/serviceaccount/ca.crt")
