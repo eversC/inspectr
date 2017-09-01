@@ -1,3 +1,3 @@
-FROM scratch
-ADD main main
+FROM ubuntu:16.10
+ADD main /main
 ENTRYPOINT ["/main"]
