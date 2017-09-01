@@ -1,4 +1,4 @@
 FROM ubuntu:16.10
-RUN apt-get install ca-certificates
+RUN apt-get update && apt-get -y install ca-certificates
 ADD main /main
 ENTRYPOINT ["/main"]
