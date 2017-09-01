@@ -176,6 +176,7 @@ func main(){
 	registeredImages := make(map[string][]string)
 	envKey := "INSPECTR_SLACK_WEBHOOK_ID"
 	webhookID := os.Getenv(envKey)
+	glog.Info("initialized local image registry cache, obtained slack webhook id, about to enter life-of-pod loop")
 	for {
 		time.Sleep(time.Duration(invokeInspectrProcess(&registeredImages, webhookID))*time.Second)
 	}
