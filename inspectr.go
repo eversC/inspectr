@@ -173,7 +173,9 @@ type Data struct {
 func main(){
 	flag.Parse()
 	glog.Info("hello inspectr")
+	glog.Info("hello inspectr 2")
 	registeredImages := make(map[string][]string)
+	glog.Info("initialized local image registry cache")
 	envKey := "INSPECTR_SLACK_WEBHOOK_ID"
 	webhookID := os.Getenv(envKey)
 	glog.Info("initialized local image registry cache, obtained slack webhook id, about to enter life-of-pod loop")
