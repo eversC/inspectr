@@ -348,7 +348,7 @@ func upgradesMap(imageToResultsMap map[string][]InspectrResult) (upgradesMap map
 		if err == nil{
 			upgradesResults := make([]InspectrResult, 0)
 			for _, result := range v{
-				for _, upgradeVersion := range upgradeCandidateSlice("2.60.2", []AvailableImageData(availImages)){
+				for _, upgradeVersion := range upgradeCandidateSlice(result.Version, []AvailableImageData(availImages)){
 					result.Upgrades = append(result.Upgrades, upgradeVersion.tag())
 				}
 				if len(result.Upgrades) > 0{
