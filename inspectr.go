@@ -311,10 +311,12 @@ func numericalVersionUpgrade(versionNumericValues []int, tag, suffix string, ver
 	tagNumerics := versionNumerics(tag, suffix, versionPrefix)
 	if len(versionNumericValues) == len(tagNumerics){
 		for i, versionNumeric := range versionNumericValues{
-			if tagNumerics[i] > versionNumeric{
+			if tagNumerics[i] == versionNumeric{
+				continue
+			}else if tagNumerics[i] > versionNumeric {
 				numericUpgrade = true
-				break
 			}
+			break
 		}
 	}
 	return
