@@ -75,7 +75,7 @@ func invokeInspectrProcess(registeredImages *map[string][]string, webhookID stri
 			withinAlertWindow := withinAlertWindow()
 			upgradeMap = filterUpgradesMap(upgradeMap, *registeredImages, withinAlertWindow)
 			augmentInternalImageRegistry(upgradeMap, *registeredImages, withinAlertWindow)
-			postToSlack(fmt.Sprintf("%#v", upgradeMap), webhookID)
+			postToSlack(upgradeMap, webhookID)
 			sleep = sleepTime(withinAlertWindow)
 		}
 	}
@@ -451,14 +451,16 @@ func dockerTagSlice(repo string) (imagesData []AvailableImageData, err error){
 
 //postToSlack posts the specified text string to the specified slack webhook.
 //It doesn't return anything.
-func postToSlack(text, webhookID string){
-	bytesBuff := new(bytes.Buffer)
-	slackMsg := SlackMsg{text, "inspectr"}
-	json.NewEncoder(bytesBuff).Encode(slackMsg)
-	_, err := http.Post("https://hooks.slack.com/services/" + webhookID,
-		"application/json; charset=utf-8", bytesBuff)
-	if err != nil {
-		fmt.Print(err)
+func postToSlack(upgradeMap map[string][]InspectrResult, webhookID string){
+	if len(upgradeMap) > 0{
+		bytesBuff := new(bytes.Buffer)
+		slackMsg := SlackMsg{fmt.Sprintf("%#v", upgradeMap), "inspectr"}
+		json.NewEncoder(bytesBuff).Encode(slackMsg)
+		_, err := http.Post("https://hooks.slack.com/services/" + webhookID,
+			"application/json; charset=utf-8", bytesBuff)
+		if err != nil {
+			fmt.Print(err)
+		}
 	}
 }
 
