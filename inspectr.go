@@ -69,13 +69,13 @@ func invokeInspectrProcess(registeredImages *map[string][]string, webhookID stri
 	var err error
 	k8sJSONData, err = jsonData()
 	if err == nil{
+		withinAlertWindow := withinAlertWindow()
 		var upgradeMap map[string][]InspectrResult
 		upgradeMap, err = upgradesMap(imageToResultsMap(k8sJSONData))
 		if err == nil{
-			withinAlertWindow := withinAlertWindow()
 			upgradeMap = filterUpgradesMap(upgradeMap, *registeredImages, withinAlertWindow)
 			augmentInternalImageRegistry(upgradeMap, *registeredImages, withinAlertWindow)
-			postToSlack(upgradeMap, webhookID, withinAlertWindow)
+			outputResults(upgradeMap, webhookID, withinAlertWindow)
 			sleep = sleepTime(withinAlertWindow)
 		}
 	}
@@ -449,18 +449,23 @@ func dockerTagSlice(repo string) (imagesData []AvailableImageData, err error){
 	return
 }
 
+func outputResults(upgradeMap map[string][]InspectrResult, webhookID string, withinAlertWindow bool){
+	if len(upgradeMap) > 0 || withinAlertWindow {
+		glog.Info("latest results: " + fmt.Sprintf("%#v", upgradeMap))
+		postToSlack(upgradeMap, webhookID)
+	}
+}
+
 //postToSlack posts the specified text string to the specified slack webhook.
 //It doesn't return anything.
-func postToSlack(upgradeMap map[string][]InspectrResult, webhookID string, withinAlertWindow bool){
-	if len(upgradeMap) > 0 || withinAlertWindow{
-		bytesBuff := new(bytes.Buffer)
-		slackMsg := SlackMsg{fmt.Sprintf("%#v", upgradeMap), "inspectr"}
-		json.NewEncoder(bytesBuff).Encode(slackMsg)
-		_, err := http.Post("https://hooks.slack.com/services/" + webhookID,
-			"application/json; charset=utf-8", bytesBuff)
-		if err != nil {
-			fmt.Print(err)
-		}
+func postToSlack(upgradeMap map[string][]InspectrResult, webhookID string){
+	bytesBuff := new(bytes.Buffer)
+	slackMsg := SlackMsg{fmt.Sprintf("%#v", upgradeMap), "inspectr"}
+	json.NewEncoder(bytesBuff).Encode(slackMsg)
+	_, err := http.Post("https://hooks.slack.com/services/" + webhookID,
+		"application/json; charset=utf-8", bytesBuff)
+	if err != nil {
+		glog.Error(err)
 	}
 }
 
