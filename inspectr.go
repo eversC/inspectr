@@ -462,13 +462,18 @@ func outputResults(upgradeMap map[string][]InspectrResult, webhookID string, wit
 //postToSlack posts the specified text string to the specified slack webhook.
 //It doesn't return anything.
 func postToSlack(upgradeMap map[string][]InspectrResult, webhookID string){
-	bytesBuff := new(bytes.Buffer)
-	slackMsg := SlackMsg{fmt.Sprintf("%#v", upgradeMap), "inspectr"}
-	json.NewEncoder(bytesBuff).Encode(slackMsg)
-	_, err := http.Post("https://hooks.slack.com/services/" + webhookID,
-		"application/json; charset=utf-8", bytesBuff)
-	if err != nil {
-		glog.Error(err)
+	if len(webhookID) > 0{
+		bytesBuff := new(bytes.Buffer)
+		slackMsg := SlackMsg{fmt.Sprintf("%#v", upgradeMap), "inspectr"}
+		json.NewEncoder(bytesBuff).Encode(slackMsg)
+		_, err := http.Post("https://hooks.slack.com/services/" + webhookID,
+			"application/json; charset=utf-8", bytesBuff)
+		if err != nil {
+			glog.Error(err)
+		}
+	}else{
+		glog.Info("not outputting to slack as the webhookId I've got is empty. Have you set the " +
+			"INSPECTR_SLACK_WEBHOOK_ID env var?")
 	}
 }
 
