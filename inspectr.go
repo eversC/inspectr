@@ -449,6 +449,9 @@ func dockerTagSlice(repo string) (imagesData []AvailableImageData, err error){
 	return
 }
 
+//outputResults outputs the specified results to various places, provided there's results and/or current timestamp is
+//within the scheduled alert window
+// It doesn't return anything.
 func outputResults(upgradeMap map[string][]InspectrResult, webhookID string, withinAlertWindow bool){
 	if len(upgradeMap) > 0 || withinAlertWindow {
 		glog.Info("latest results: " + fmt.Sprintf("%#v", upgradeMap))
