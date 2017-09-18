@@ -354,16 +354,18 @@ func imageToResultsMap(jsonData *Data) (imageToResultsMap map[string][]InspectrR
 			_, ok := allowedPodPhases[phase]
 			if ok {
 				for _, container := range item.Spec.Containers {
-					image := imageFromURI(container.Image)
-					inspectrResult := InspectrResult{image, namespace, 1, nil,
-													 versionFromURI(container.Image)}
-					inspectrResults, ok := imageToResultsMap[image]
-					if !ok {
-						inspectrResults = make([]InspectrResult, 0)
+					containerImage := container.Image
+					if strings.Contains(containerImage, ":"){
+						image := imageFromURI(container.Image)
+						inspectrResult := InspectrResult{image, namespace, 1, nil,
+														 versionFromURI(containerImage)}
+						inspectrResults, ok := imageToResultsMap[image]
+						if !ok {
+							inspectrResults = make([]InspectrResult, 0)
+						}
+						inspectrResults = addInspectrResult(inspectrResults, inspectrResult)
+						imageToResultsMap[image] = inspectrResults
 					}
-
-					inspectrResults = addInspectrResult(inspectrResults, inspectrResult)
-					imageToResultsMap[image] = inspectrResults
 				}
 			}
 		}
