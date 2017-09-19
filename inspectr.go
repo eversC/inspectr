@@ -355,10 +355,11 @@ func imageToResultsMap(jsonData *Data) (imageToResultsMap map[string][]InspectrR
 			if ok {
 				for _, container := range item.Spec.Containers {
 					containerImage := container.Image
-					if strings.Contains(containerImage, ":"){
+					splitImage := strings.Split(containerImage, ":")
+					if len(splitImage) > 1 && strings.Contains(containerImage, ":"){
 						image := imageFromURI(container.Image)
 						inspectrResult := InspectrResult{image, namespace, 1, nil,
-														 versionFromURI(containerImage)}
+														 versionFromURI(splitImage)}
 						inspectrResults, ok := imageToResultsMap[image]
 						if !ok {
 							inspectrResults = make([]InspectrResult, 0)
@@ -486,7 +487,7 @@ func imageFromURI(imageURI string)(image string) {
 }
 
 //versionFromURI returns the image tag from a URI. E.g. 'v0.0.1-alpha' from the URI: 'eversc/inspectr:v0.0.1-alpha'
-func versionFromURI(imageURI string)(version string){
-	version = strings.Split(imageURI, ":")[1]
+func versionFromURI(splitImage []string)(version string){
+	version = splitImage[1]
 	return
 }
