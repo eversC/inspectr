@@ -488,6 +488,8 @@ func imageFromURI(imageURI string)(image string) {
 
 //versionFromURI returns the image tag from a URI. E.g. 'v0.0.1-alpha' from the URI: 'eversc/inspectr:v0.0.1-alpha'
 func versionFromURI(splitImage []string)(version string){
-	version = splitImage[1]
+	if len(splitImage) > 1{
+		version = splitImage[1]
+	}
 	return
 }
