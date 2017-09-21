@@ -217,7 +217,8 @@ func registeredImageString(result InspectrResult)(resultString string){
 func upgradesMap(imageToResultsMap map[string][]InspectrResult) (upgradesMap map[string][]InspectrResult, err error){
 	upgradesMap = make(map[string][]InspectrResult)
 	for k, v := range imageToResultsMap{
-		availImages, err := dockerTagSlice(k)
+		imageString := strings.Split(k, ":")[1]
+		availImages, err := dockerTagSlice(imageString)
 		if err == nil{
 			upgradesResults := make([]InspectrResult, 0)
 			for _, result := range v{
