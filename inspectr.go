@@ -358,14 +358,15 @@ func imageToResultsMap(jsonData *Data) (imageToResultsMap map[string][]InspectrR
 					splitImage := strings.Split(containerImage, ":")
 					if len(splitImage) > 1 {
 						image := imageFromURI(container.Image)
-						inspectrResult := InspectrResult{clusterName() + ":" + image, namespace,
+						inspectrResult := InspectrResult{image, namespace,
 							1, nil,versionFromURI(splitImage)}
-						inspectrResults, ok := imageToResultsMap[image]
+						clusterImageString := clusterName() + ":" + image
+						inspectrResults, ok := imageToResultsMap[clusterImageString]
 						if !ok {
 							inspectrResults = make([]InspectrResult, 0)
 						}
 						inspectrResults = addInspectrResult(inspectrResults, inspectrResult)
-						imageToResultsMap[image] = inspectrResults
+						imageToResultsMap[clusterImageString] = inspectrResults
 					}
 				}
 			}
