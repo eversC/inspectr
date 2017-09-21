@@ -358,8 +358,8 @@ func imageToResultsMap(jsonData *Data) (imageToResultsMap map[string][]InspectrR
 					splitImage := strings.Split(containerImage, ":")
 					if len(splitImage) > 1 {
 						image := imageFromURI(container.Image)
-						inspectrResult := InspectrResult{image, namespace, 1, nil,
-														 versionFromURI(splitImage)}
+						inspectrResult := InspectrResult{clusterName() + ":" + image, namespace,
+							1, nil,versionFromURI(splitImage)}
 						inspectrResults, ok := imageToResultsMap[image]
 						if !ok {
 							inspectrResults = make([]InspectrResult, 0)
@@ -369,6 +369,26 @@ func imageToResultsMap(jsonData *Data) (imageToResultsMap map[string][]InspectrR
 					}
 				}
 			}
+		}
+	}
+	return
+}
+
+//clusterName returns the name of the cluster the inspectr application is running in
+func clusterName()(clusterName string){
+	clusterName = "UNK"
+	req, _ := http.NewRequest("GET", "http://metadata/computeMetadata/v1/instance/attributes/cluster-name",
+		nil)
+	req.Header.Set("Metadata-Flavor", "Google")
+	client := &http.Client{}
+	var resp *http.Response
+	var err error
+	resp, err = client.Do(req)
+	defer resp.Body.Close()
+	if err == nil{
+		clusterBytes, err := ioutil.ReadAll(resp.Body)
+		if err == nil{
+			clusterName = string(clusterBytes)
 		}
 	}
 	return
