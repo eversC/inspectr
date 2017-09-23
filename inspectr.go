@@ -218,7 +218,15 @@ func upgradesMap(imageToResultsMap map[string][]InspectrResult) (upgradesMap map
 	upgradesMap = make(map[string][]InspectrResult)
 	for k, v := range imageToResultsMap{
 		imageString := strings.Split(k, ":")[1]
-		availImages, err := dockerTagSlice(imageString)
+		var availImages []AvailableImageData
+		switch {
+			case strings.Contains(imageString, "quay.io"):
+				availImages, err = quayTagSlice(imageString)
+			//case strings.Contains(imageString, "gcr.io/cloud-solutions-images"): //could catch more public gcr.io repos'??
+				//availImages, err = gcrTagSlice(imageString)
+			default:
+				availImages, err = dockerTagSlice(imageString)
+		}
 		if err == nil{
 			upgradesResults := make([]InspectrResult, 0)
 			for _, result := range v{
@@ -240,6 +248,11 @@ func upgradesMap(imageToResultsMap map[string][]InspectrResult) (upgradesMap map
 //Dockertag implementation of AvailableImageData
 func (dockerTag DockerTag) tag() string {
 	return dockerTag.Name
+}
+
+//Quay/List implementation of AvailableImageData
+func (quayTag List) tag() string {
+	return quayTag.Name
 }
 
 //upgradeCandidateSlice returns a slice of AvailableImageData types that are deemed to be upgrades to the version
@@ -457,7 +470,14 @@ func decodeDockerTag(r io.Reader) ([]DockerTag, error){
 	return *x, err
 }
 
-//dockerTagSlice returns a DockerTag slice
+//decodeQuayTag returns a List type, decoded from the specified Reader, and an error
+func decodeQuayTag(r io.Reader) ([]List, error){
+	x := new([]List)
+	err := json.NewDecoder(r).Decode(x)
+	return *x, err
+}
+
+//dockerTagSlice returns an AvailableImageData slice
 func dockerTagSlice(repo string) (imagesData []AvailableImageData, err error){
 	err = nil
 	resp, err := http.Get("https://registry.hub.docker.com/v1/repositories/" + repo + "/tags")
@@ -465,10 +485,23 @@ func dockerTagSlice(repo string) (imagesData []AvailableImageData, err error){
 		defer resp.Body.Close()
 		var dockerTags []DockerTag
 		dockerTags, err = decodeDockerTag(resp.Body)
-
 		for _, dockerTag := range []DockerTag(dockerTags){
 			imagesData = append(imagesData, dockerTag)
-			//imagesData[i] = dockerTag
+		}
+	}
+	return
+}
+
+//dockerTagSlice returns an AvailableImageData slice
+func quayTagSlice(repo string) (imagesData []AvailableImageData, err error){
+	err = nil
+	resp, err := http.Get("https://quay.io/v2/" + repo + "/tags/list")
+	if err == nil {
+		defer resp.Body.Close()
+		var quayTags []List
+		quayTags, err = decodeQuayTag(resp.Body)
+		for _, quayTag := range []List(quayTags){
+			imagesData = append(imagesData, quayTag)
 		}
 	}
 	return
