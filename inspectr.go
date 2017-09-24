@@ -5,7 +5,6 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
-	"errors"
 	"flag"
 	"fmt"
 	"github.com/golang/glog"
@@ -490,13 +489,20 @@ func decodeQuayTag(r io.Reader) (quayTags []QuayTag, err error){
 //dockerTagSlice returns an AvailableImageData slice
 func dockerTagSlice(repo string) (imagesData []AvailableImageData, err error){
 	err = nil
-	resp, err := http.Get("https://registry.hub.docker.com/v1/repositories/" + repo + "/tags")
+	imageUri := "https://registry.hub.docker.com/v1/repositories/" + repo + "/tags"
+	resp, err := http.Get(imageUri)
 	if err == nil {
-		defer resp.Body.Close()
-		var dockerTags []DockerTag
-		dockerTags, err = decodeDockerTag(resp.Body)
-		for _, dockerTag := range []DockerTag(dockerTags){
-			imagesData = append(imagesData, dockerTag)
+		if resp.StatusCode == 200{
+			defer resp.Body.Close()
+			var dockerTags []DockerTag
+			dockerTags, err = decodeDockerTag(resp.Body)
+			if err == nil {
+				for _, dockerTag := range []DockerTag(dockerTags){
+					imagesData = append(imagesData, dockerTag)
+				}
+			}
+		}else{
+			glog.Warning("bad status code (" + strconv.Itoa(resp.StatusCode) + ") trying to access " + imageUri)
 		}
 	}
 	return
@@ -508,17 +514,18 @@ func quayTagSlice(repo string) (imagesData []AvailableImageData, err error){
 	repo = strings.Replace(repo, "quay.io/", "", 1)
 	imageUri := "https://quay.io/v2/" + repo + "/tags/list"
 	resp, err := http.Get(imageUri)
-	if resp.StatusCode != 200{
-		err = errors.New("bad status code (" + strconv.Itoa(resp.StatusCode) + ") trying to access " + imageUri)
-	}
 	if err == nil {
-		defer resp.Body.Close()
-		var quayTags []QuayTag
-		quayTags, err = decodeQuayTag(resp.Body)
-		if err == nil {
-			for _, quayTag := range []QuayTag(quayTags) {
-				imagesData = append(imagesData, quayTag)
+		if resp.StatusCode == 200{
+			defer resp.Body.Close()
+			var quayTags []QuayTag
+			quayTags, err = decodeQuayTag(resp.Body)
+			if err == nil {
+				for _, quayTag := range []QuayTag(quayTags) {
+					imagesData = append(imagesData, quayTag)
+				}
 			}
+		}else{
+			glog.Warning("bad status code (" + strconv.Itoa(resp.StatusCode) + ") trying to access " + imageUri)
 		}
 	}
 	return
