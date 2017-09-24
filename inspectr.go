@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"github.com/golang/glog"
@@ -27,6 +28,10 @@ type AvailableImageData interface {
 type DockerTag struct {
 	Layer string `json:"layer"`
 	Name  string `json:"name"`
+}
+
+type QuayTag struct {
+	Name string
 }
 
 //SlackMsg type
@@ -250,8 +255,8 @@ func (dockerTag DockerTag) tag() string {
 	return dockerTag.Name
 }
 
-//Quay/List implementation of AvailableImageData
-func (quayTag List) tag() string {
+//QuayTag implementation of AvailableImageData
+func (quayTag QuayTag) tag() string {
 	return quayTag.Name
 }
 
@@ -470,11 +475,16 @@ func decodeDockerTag(r io.Reader) ([]DockerTag, error){
 	return *x, err
 }
 
-//decodeQuayTag returns a List type, decoded from the specified Reader, and an error
-func decodeQuayTag(r io.Reader) ([]List, error){
-	x := new([]List)
-	err := json.NewDecoder(r).Decode(x)
-	return *x, err
+//decodeQuayTag returns a QuayTag type, decoded from the specified Reader, and an error
+func decodeQuayTag(r io.Reader) (quayTags []QuayTag, err error){
+	x := new(List)
+	err = json.NewDecoder(r).Decode(x)
+	for _, tag := range []string(x.Tags){
+		var quayTag = new(QuayTag)
+		quayTag.Name = tag
+		quayTags = append(quayTags, *quayTag)
+	}
+	return
 }
 
 //dockerTagSlice returns an AvailableImageData slice
@@ -495,13 +505,20 @@ func dockerTagSlice(repo string) (imagesData []AvailableImageData, err error){
 //dockerTagSlice returns an AvailableImageData slice
 func quayTagSlice(repo string) (imagesData []AvailableImageData, err error){
 	err = nil
-	resp, err := http.Get("https://quay.io/v2/" + repo + "/tags/list")
+	repo = strings.Replace(repo, "quay.io/", "", 1)
+	imageUri := "https://quay.io/v2/" + repo + "/tags/list"
+	resp, err := http.Get(imageUri)
+	if resp.StatusCode != 200{
+		err = errors.New("bad status code (" + strconv.Itoa(resp.StatusCode) + ") trying to access " + imageUri)
+	}
 	if err == nil {
 		defer resp.Body.Close()
-		var quayTags []List
+		var quayTags []QuayTag
 		quayTags, err = decodeQuayTag(resp.Body)
-		for _, quayTag := range []List(quayTags){
-			imagesData = append(imagesData, quayTag)
+		if err == nil {
+			for _, quayTag := range []QuayTag(quayTags) {
+				imagesData = append(imagesData, quayTag)
+			}
 		}
 	}
 	return
