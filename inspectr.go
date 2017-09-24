@@ -29,7 +29,13 @@ type DockerTag struct {
 	Name  string `json:"name"`
 }
 
+//QuayTag type
 type QuayTag struct {
+	Name string
+}
+
+//GcrTag type
+type GcrTag struct {
 	Name string
 }
 
@@ -226,8 +232,8 @@ func upgradesMap(imageToResultsMap map[string][]InspectrResult) (upgradesMap map
 		switch {
 			case strings.Contains(imageString, "quay.io"):
 				availImages, err = quayTagSlice(imageString)
-			//case strings.Contains(imageString, "gcr.io/cloud-solutions-images"): //could catch more public gcr.io repos'??
-				//availImages, err = gcrTagSlice(imageString)
+			case strings.Contains(imageString, "gcr.io"):
+				availImages, err = gcrTagSlice(imageString)
 			default:
 				availImages, err = dockerTagSlice(imageString)
 		}
@@ -257,6 +263,11 @@ func (dockerTag DockerTag) tag() string {
 //QuayTag implementation of AvailableImageData
 func (quayTag QuayTag) tag() string {
 	return quayTag.Name
+}
+
+//GcrTag implementaton of AvailableImageData
+func (gcrTag GcrTag) tag() string {
+	return gcrTag.Name
 }
 
 //upgradeCandidateSlice returns a slice of AvailableImageData types that are deemed to be upgrades to the version
@@ -486,7 +497,19 @@ func decodeQuayTag(r io.Reader) (quayTags []QuayTag, err error){
 	return
 }
 
-//dockerTagSlice returns an AvailableImageData slice
+//decodeGcrTag returns a GcrTag type, decoded from the specified Reader, and an error
+func decodeGcrTag(r io.Reader) (gcrTags []GcrTag, err error){
+	x := new(Gcr)
+	err = json.NewDecoder(r).Decode(x)
+	for _, tag := range []string(x.Tags){
+		var gcrTag = new(GcrTag)
+		gcrTag.Name = tag
+		gcrTags = append(gcrTags, *gcrTag)
+	}
+	return
+}
+
+//dockerTagSlice returns an AvailableImageData slice representing all available tags for the specified repo
 func dockerTagSlice(repo string) (imagesData []AvailableImageData, err error){
 	err = nil
 	imageUri := "https://registry.hub.docker.com/v1/repositories/" + repo + "/tags"
@@ -508,7 +531,7 @@ func dockerTagSlice(repo string) (imagesData []AvailableImageData, err error){
 	return
 }
 
-//dockerTagSlice returns an AvailableImageData slice
+//quayTagSlice returns an AvailableImageData slice representing all available tags for the specified repo
 func quayTagSlice(repo string) (imagesData []AvailableImageData, err error){
 	err = nil
 	repo = strings.Replace(repo, "quay.io/", "", 1)
@@ -522,6 +545,29 @@ func quayTagSlice(repo string) (imagesData []AvailableImageData, err error){
 			if err == nil {
 				for _, quayTag := range []QuayTag(quayTags) {
 					imagesData = append(imagesData, quayTag)
+				}
+			}
+		}else{
+			glog.Warning("bad status code (" + strconv.Itoa(resp.StatusCode) + ") trying to access " + imageUri)
+		}
+	}
+	return
+}
+
+//gcrTagSlice returns an AvailableImageData slice representing all available tags for the specified repo
+func gcrTagSlice(repo string) (imagesData []AvailableImageData, err error){
+	err = nil
+	repo = strings.Replace(repo, "gcr.io/", "", 1)
+	imageUri := "https://gcr.io/v2/" + repo + "/tags/list"
+	resp, err := http.Get(imageUri)
+	if err == nil {
+		if resp.StatusCode == 200{
+			defer resp.Body.Close()
+			var gcrTags []GcrTag
+			gcrTags, err = decodeGcrTag(resp.Body)
+			if err == nil {
+				for _, gcrTag := range []GcrTag(gcrTags){
+					imagesData = append(imagesData, gcrTag)
 				}
 			}
 		}else{
