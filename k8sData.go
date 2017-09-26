@@ -1,8 +1,8 @@
 package main
 
 import (
-	"time"
 	"net"
+	"time"
 )
 
 //Data type representing the json schema of https://[master]/api/v1/pods
@@ -55,7 +55,7 @@ type Data struct {
 				} `json:"readinessProbe"`
 				Resources struct {
 					Limits struct {
-						CPU    string  `json:"string"`
+						CPU    string `json:"string"`
 						Memory string `json:"memory"`
 					} `json:"limits"`
 					Requests struct {
@@ -98,7 +98,7 @@ type Data struct {
 			Conditions []struct {
 				LastProbeTime      interface{} `json:"lastProbeTime"`
 				LastTransitionTime time.Time   `json:"lastTransitionTime"`
-				Status             string        `json:"string"`
+				Status             string      `json:"string"`
 				Type               string      `json:"type"`
 			} `json:"conditions"`
 			ContainerStatuses []struct {
