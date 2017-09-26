@@ -354,7 +354,7 @@ func numericalVersionUpgrade(versionNumericValues []int, tag, suffix string, ver
 //prefixSuffixMatch returns a bool indicating whether the tag string exhibits the same prefix/suffix properties as
 // those specified
 func prefixSuffixMatch(tag, suffixx string, versionPrefixx bool) (prefixSuffixMatch bool) {
-	prefixMatch := false
+	var prefixMatch bool
 	tagPrefix := versionPrefix(tag)
 	if versionPrefixx {
 		prefixMatch = tagPrefix
@@ -514,8 +514,8 @@ func decodeGcrTag(r io.Reader) (gcrTags []GcrTag, err error) {
 //dockerTagSlice returns an AvailableImageData slice representing all available tags for the specified repo
 func dockerTagSlice(repo string) (imagesData []AvailableImageData, err error) {
 	err = nil
-	imageUri := "https://registry.hub.docker.com/v1/repositories/" + repo + "/tags"
-	resp, err := http.Get(imageUri)
+	imageURI := "https://registry.hub.docker.com/v1/repositories/" + repo + "/tags"
+	resp, err := http.Get(imageURI)
 	if err == nil {
 		if resp.StatusCode == 200 {
 			defer resp.Body.Close()
@@ -527,7 +527,7 @@ func dockerTagSlice(repo string) (imagesData []AvailableImageData, err error) {
 				}
 			}
 		} else {
-			glog.Warning("bad status code (" + strconv.Itoa(resp.StatusCode) + ") trying to access " + imageUri)
+			glog.Warning("bad status code (" + strconv.Itoa(resp.StatusCode) + ") trying to access " + imageURI)
 		}
 	}
 	return
@@ -537,8 +537,8 @@ func dockerTagSlice(repo string) (imagesData []AvailableImageData, err error) {
 func quayTagSlice(repo string) (imagesData []AvailableImageData, err error) {
 	err = nil
 	repo = strings.Replace(repo, "quay.io/", "", 1)
-	imageUri := "https://quay.io/v2/" + repo + "/tags/list"
-	resp, err := http.Get(imageUri)
+	imageURI := "https://quay.io/v2/" + repo + "/tags/list"
+	resp, err := http.Get(imageURI)
 	if err == nil {
 		if resp.StatusCode == 200 {
 			defer resp.Body.Close()
@@ -550,7 +550,7 @@ func quayTagSlice(repo string) (imagesData []AvailableImageData, err error) {
 				}
 			}
 		} else {
-			glog.Warning("bad status code (" + strconv.Itoa(resp.StatusCode) + ") trying to access " + imageUri)
+			glog.Warning("bad status code (" + strconv.Itoa(resp.StatusCode) + ") trying to access " + imageURI)
 		}
 	}
 	return
@@ -560,8 +560,8 @@ func quayTagSlice(repo string) (imagesData []AvailableImageData, err error) {
 func gcrTagSlice(repo string) (imagesData []AvailableImageData, err error) {
 	err = nil
 	repo = strings.Replace(repo, "gcr.io/", "", 1)
-	imageUri := "https://gcr.io/v2/" + repo + "/tags/list"
-	resp, err := http.Get(imageUri)
+	imageURI := "https://gcr.io/v2/" + repo + "/tags/list"
+	resp, err := http.Get(imageURI)
 	if err == nil {
 		if resp.StatusCode == 200 {
 			defer resp.Body.Close()
@@ -573,7 +573,7 @@ func gcrTagSlice(repo string) (imagesData []AvailableImageData, err error) {
 				}
 			}
 		} else {
-			glog.Warning("bad status code (" + strconv.Itoa(resp.StatusCode) + ") trying to access " + imageUri)
+			glog.Warning("bad status code (" + strconv.Itoa(resp.StatusCode) + ") trying to access " + imageURI)
 		}
 	}
 	return
