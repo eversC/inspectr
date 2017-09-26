@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	jira "github.com/andygrunwald/go-jira"
 	"github.com/golang/glog"
 )
 
@@ -586,6 +587,49 @@ func outputResults(upgradeMap map[string][]InspectrResult, webhookID string, wit
 	if len(upgradeMap) > 0 || withinAlertWindow {
 		glog.Info("latest results: " + fmt.Sprintf("%#v", upgradeMap))
 		postToSlack(upgradeMap, webhookID)
+	}
+}
+
+func reportResults(upgradeMap map[string][]InspectrResult, jiraEnvString string) {
+	var jiraURL, user, pass, project, issueType string
+	//TODO: create summary string, and determine if JIRA has already been raised for it
+	// if so, don't proceed any further..
+
+	//TODO: pluck values out of jiraEnvString
+	if len(upgradeMap) > 0 {
+		jiraClient, err := jira.NewClient(nil, jiraURL)
+		if err != nil {
+			panic(err)
+		}
+		jiraClient.Authentication.SetBasicAuth(user, pass)
+		meta, _, errb := jiraClient.Issue.GetCreateMeta(project)
+		if errb != nil {
+			panic(err)
+		}
+		metaProject := meta.GetProjectWithKey(project)
+		metaIssuetype := metaProject.GetIssueTypeWithName(issueType)
+		fieldsConfig := make(map[string]string, 0)
+		//TODO: get fieldsConfig values from the jiraEnvString
+		fieldsConfig["Summary"] = "test go jira"
+		fieldsConfig["Issue Type"] = "Bug"
+		fieldsConfig["Component/s"] = "Pipeline"
+		fieldsConfig["Description"] = "demo jira"
+		fieldsConfig["Project"] = project
+		fieldsConfig["Client Affected"] = "All"
+
+		issue, errm := jira.InitIssueWithMetaAndFields(metaProject, metaIssuetype, fieldsConfig)
+
+		if errm != nil {
+			panic(errm)
+		}
+
+		_, resp, errc := jiraClient.Issue.Create(issue)
+		if errc != nil {
+			body, _ := ioutil.ReadAll(resp.Body)
+			bodyString := string(body)
+			fmt.Println(bodyString)
+			panic(errc)
+		}
 	}
 }
 
