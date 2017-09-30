@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -61,12 +62,19 @@ func main() {
 	glog.Info("hello inspectr")
 	registeredImages := make(map[string][]string)
 	glog.Info("initialized local image registry cache")
-	envKey := "INSPECTR_SLACK_WEBHOOK_ID"
-	glog.Info("obtained slack webhook id")
-	webhookID := os.Getenv(envKey)
+
+	slackWebhookKey := "INSPECTR_SLACK_WEBHOOK_ID"
+	jiraURLKey := "INSPECTR_JIRA_URL"
+	jiraParamKey := "INSPECTR_JIRA_PARAMS"
+
+	webhookID := os.Getenv(slackWebhookKey)
+	jiraURL := os.Getenv(jiraURLKey)
+	jiraParams := os.Getenv(jiraParamKey)
+
+	glog.Info("picked up env vars")
 	glog.Info("about to enter life-of-pod loop")
 	for {
-		time.Sleep(time.Duration(invokeInspectrProcess(&registeredImages, webhookID)) * time.Second)
+		time.Sleep(time.Duration(invokeInspectrProcess(&registeredImages, webhookID, jiraURL, jiraParams)) * time.Second)
 	}
 }
 
@@ -75,7 +83,7 @@ func main() {
 // value.
 // if everything goes okay, the sleep value returned is either pretty small (as inspectr should be quick to detect
 // any 'unregistered' images, or a bit longer if current time is withinAlertWindow
-func invokeInspectrProcess(registeredImages *map[string][]string, webhookID string) (sleep int) {
+func invokeInspectrProcess(registeredImages *map[string][]string, webhookID, jiraURL, jiraParamString string) (sleep int) {
 	sleep = 300
 	var k8sJSONData *Data
 	var err error
@@ -88,6 +96,7 @@ func invokeInspectrProcess(registeredImages *map[string][]string, webhookID stri
 			upgradeMap = filterUpgradesMap(upgradeMap, *registeredImages, withinAlertWindow)
 			augmentInternalImageRegistry(upgradeMap, *registeredImages, withinAlertWindow)
 			outputResults(upgradeMap, webhookID, withinAlertWindow)
+			reportResults(upgradeMap, jiraURL, jiraParamString, webhookID)
 			sleep = sleepTime(withinAlertWindow)
 		}
 	}
@@ -388,10 +397,11 @@ func imageToResultsMap(jsonData *Data) (imageToResultsMap map[string][]InspectrR
 					containerImage := container.Image
 					splitImage := strings.Split(containerImage, ":")
 					if len(splitImage) > 1 {
-						image := imageFromURI(container.Image)
+						image := imageFromURI(containerImage)
 						inspectrResult := InspectrResult{image, namespace,
 							1, nil, versionFromURI(splitImage)}
-						clusterImageString := clusterName() + ":" + image
+						clusterImageString := clusterName() + ":" + image + ":" +
+							podName(metadata.Name) + ":" + container.Name
 						inspectrResults, ok := imageToResultsMap[clusterImageString]
 						if !ok {
 							inspectrResults = make([]InspectrResult, 0)
@@ -401,6 +411,26 @@ func imageToResultsMap(jsonData *Data) (imageToResultsMap map[string][]InspectrR
 					}
 				}
 			}
+		}
+	}
+	return
+}
+
+//podName returns a generic pod name from an actual full pod name
+//
+// This is assuming that all pods are suffixed by 2 strings separated by "-"
+// e.g. [podname]-3229788801-zl7bq
+func podName(fullPodName string) (podName string) {
+	podNameSplitStrings := strings.Split(fullPodName, "-")
+	var buffer bytes.Buffer
+	first := true
+	for index, podNameSplitString := range podNameSplitStrings {
+		if index < len(podNameSplitStrings)-2 {
+			if !first {
+				buffer.WriteString("-")
+			}
+			first = false
+			buffer.WriteString(podNameSplitString)
 		}
 	}
 	return
@@ -445,7 +475,6 @@ func addInspectrResult(inspectrResults []InspectrResult, inspectrResult Inspectr
 
 //bodyFromMaster returns a ReadCloser from the k8s master's rs, and an error
 func bodyFromMaster() (r io.ReadCloser, err error) {
-	err = nil
 	var caCert []byte
 	caCert, err = ioutil.ReadFile("/var/run/secrets/kubernetes.io/serviceaccount/ca.crt")
 	if err == nil {
@@ -514,7 +543,6 @@ func decodeGcrTag(r io.Reader) (gcrTags []GcrTag, err error) {
 
 //dockerTagSlice returns an AvailableImageData slice representing all available tags for the specified repo
 func dockerTagSlice(repo string) (imagesData []AvailableImageData, err error) {
-	err = nil
 	imageURI := "https://registry.hub.docker.com/v1/repositories/" + repo + "/tags"
 	resp, err := http.Get(imageURI)
 	if err == nil {
@@ -536,7 +564,6 @@ func dockerTagSlice(repo string) (imagesData []AvailableImageData, err error) {
 
 //quayTagSlice returns an AvailableImageData slice representing all available tags for the specified repo
 func quayTagSlice(repo string) (imagesData []AvailableImageData, err error) {
-	err = nil
 	repo = strings.Replace(repo, "quay.io/", "", 1)
 	imageURI := "https://quay.io/v2/" + repo + "/tags/list"
 	resp, err := http.Get(imageURI)
@@ -559,7 +586,6 @@ func quayTagSlice(repo string) (imagesData []AvailableImageData, err error) {
 
 //gcrTagSlice returns an AvailableImageData slice representing all available tags for the specified repo
 func gcrTagSlice(repo string) (imagesData []AvailableImageData, err error) {
-	err = nil
 	repo = strings.Replace(repo, "gcr.io/", "", 1)
 	imageURI := "https://gcr.io/v2/" + repo + "/tags/list"
 	resp, err := http.Get(imageURI)
@@ -586,59 +612,22 @@ func gcrTagSlice(repo string) (imagesData []AvailableImageData, err error) {
 func outputResults(upgradeMap map[string][]InspectrResult, webhookID string, withinAlertWindow bool) {
 	if len(upgradeMap) > 0 || withinAlertWindow {
 		glog.Info("latest results: " + fmt.Sprintf("%#v", upgradeMap))
-		postToSlack(upgradeMap, webhookID)
+		postResultToSlack(upgradeMap, webhookID)
 	}
 }
 
-func reportResults(upgradeMap map[string][]InspectrResult, jiraEnvString string) {
-	var jiraURL, user, pass, project, issueType string
-	//TODO: create summary string, and determine if JIRA has already been raised for it
-	// if so, don't proceed any further..
-
-	//TODO: pluck values out of jiraEnvString
-	if len(upgradeMap) > 0 {
-		jiraClient, err := jira.NewClient(nil, jiraURL)
-		if err != nil {
-			panic(err)
-		}
-		jiraClient.Authentication.SetBasicAuth(user, pass)
-		meta, _, errb := jiraClient.Issue.GetCreateMeta(project)
-		if errb != nil {
-			panic(err)
-		}
-		metaProject := meta.GetProjectWithKey(project)
-		metaIssuetype := metaProject.GetIssueTypeWithName(issueType)
-		fieldsConfig := make(map[string]string, 0)
-		//TODO: get fieldsConfig values from the jiraEnvString
-		fieldsConfig["Summary"] = "test go jira"
-		fieldsConfig["Issue Type"] = "Bug"
-		fieldsConfig["Component/s"] = "Pipeline"
-		fieldsConfig["Description"] = "demo jira"
-		fieldsConfig["Project"] = project
-		fieldsConfig["Client Affected"] = "All"
-
-		issue, errm := jira.InitIssueWithMetaAndFields(metaProject, metaIssuetype, fieldsConfig)
-
-		if errm != nil {
-			panic(errm)
-		}
-
-		_, resp, errc := jiraClient.Issue.Create(issue)
-		if errc != nil {
-			body, _ := ioutil.ReadAll(resp.Body)
-			bodyString := string(body)
-			fmt.Println(bodyString)
-			panic(errc)
-		}
-	}
-}
-
-//postToSlack posts the specified text string to the specified slack webhook.
+//postResultToSlack posts a string representation of the inspectrResultMap to slack
 //It doesn't return anything.
-func postToSlack(upgradeMap map[string][]InspectrResult, webhookID string) {
+func postResultToSlack(upgradeMap map[string][]InspectrResult, webhookID string) {
+	postStringToSlack(fmt.Sprintf("%#v", upgradeMap), webhookID)
+}
+
+//postStringToSlack posts the specified string to the specified slack webhook.
+// //It doesn't return anything.
+func postStringToSlack(payload, webhookID string) {
 	if len(webhookID) > 0 {
+		slackMsg := SlackMsg{payload, "inspectr"}
 		bytesBuff := new(bytes.Buffer)
-		slackMsg := SlackMsg{fmt.Sprintf("%#v", upgradeMap), "inspectr"}
 		json.NewEncoder(bytesBuff).Encode(slackMsg)
 		_, err := http.Post("https://hooks.slack.com/services/"+webhookID,
 			"application/json; charset=utf-8", bytesBuff)
@@ -646,9 +635,10 @@ func postToSlack(upgradeMap map[string][]InspectrResult, webhookID string) {
 			glog.Error(err)
 		}
 	} else {
-		glog.Info("not outputting to slack as the webhookId I've got is empty. Have you set the " +
+		glog.Info("not outputting to slack as the webhookID I've got is empty. Have you set the " +
 			"INSPECTR_SLACK_WEBHOOK_ID env var?")
 	}
+
 }
 
 //imageFromURI returns the image 'name' from a URI. E.g. 'eversc/inspectr' from the URI: 'eversc/inspectr:v0.0.1-alpha'
@@ -661,4 +651,230 @@ func imageFromURI(imageURI string) (image string) {
 func versionFromURI(splitImage []string) (version string) {
 	version = splitImage[1]
 	return
+}
+
+//summaryFromInspectrMapKey returns a 'summary' string for use on an issue in a bugtracking service, e.g. JIRA
+func summaryFromInspectrMapKey(key string) (summary string) {
+	summary = "upgrade image: " + imageFromInspectrMapKey(key) + " in cluster: " + clusterFromInspectrMapKey(key) + " pod: " +
+		podFromInspectrMapKey(key) + " container: " + containerFromInspectrMapKey(key)
+	return
+}
+
+//clusterFromInspectrMapKey returns the cluster string from an inspectr map key
+func clusterFromInspectrMapKey(mapKey string) (cluster string) {
+	cluster = strings.Split(mapKey, ":")[0]
+	return
+}
+
+//imageFromInspectrMapKey returns the image string from an inspectr map key
+func imageFromInspectrMapKey(mapKey string) (image string) {
+	image = strings.Split(mapKey, ":")[1]
+	return
+}
+
+//podFromInspectrMapKey returns the pod string from an inspectr map key
+func podFromInspectrMapKey(mapKey string) (pod string) {
+	pod = strings.Split(mapKey, ":")[2]
+	return
+}
+
+//containerFromInspectrMapKey returns the container string from an inspectr map key
+func containerFromInspectrMapKey(mapKey string) (container string) {
+	container = strings.Split(mapKey, ":")[3]
+	return
+}
+
+//reportResults updates or creates a JIRA issue based on the upgradeMap provided
+//
+//jiraParamString should be of the form:
+//     user|pass|project|issueType|otherFieldKey:otherFieldValue,otherFieldKey:otherFieldValue
+//
+//  user, pass, project and issueType are mandatory
+//  1:n otherField k:v are optional  (but could be mandatory in your JIRA project)
+//
+//  otherField keys should be as they appear in the JIRA UI
+func reportResults(upgradeMap map[string][]InspectrResult, jiraURL, jiraParamString, webhookID string) {
+	jiraParamStrings := strings.Split(jiraParamString, "|")
+	var resp *jira.Response
+	var err error
+	if len(jiraParamStrings) > 3 {
+		var jiraClient *jira.Client
+		jiraClient, err = jira.NewClient(nil, jiraURL)
+		if err == nil {
+			jiraClient.Authentication.SetBasicAuth(jiraParamStrings[0], jiraParamStrings[1])
+			project := jiraParamStrings[2]
+			issueType := jiraParamStrings[3]
+			var otherFields string
+			if len(jiraParamStrings) > 4 {
+				otherFields = jiraParamStrings[4]
+			}
+			for k, v := range upgradeMap {
+				summary := summaryFromInspectrMapKey(k)
+				var issues []jira.Issue
+				issues, resp, err = jiraClient.Issue.Search("summary ~ \""+summary+"\" AND project = "+project, nil)
+				if err == nil {
+					if len(issues) == 1 {
+						for _, inspectrResult := range v {
+							var resultMentioned bool
+							issue := issues[0]
+							if issue.Fields.Comments == nil {
+								resultMentioned = stringContainsInspectrResult(issue.Fields.Description, inspectrResult)
+							} else {
+								for _, comment := range issue.Fields.Comments.Comments {
+									if stringContainsInspectrResult(comment.Body, inspectrResult) {
+										resultMentioned = true
+										break
+									}
+								}
+							}
+							if !resultMentioned {
+								addInspectrCommentToIssue(issue.Key, inspectrResult, jiraClient, jiraURL, webhookID)
+							}
+						}
+					} else if len(issues) == 0 {
+						createIssue(project, summary, issueType, otherFields, k, v, jiraClient, jiraURL, webhookID)
+					} else {
+						//TODO: log, there shouldn't be multiple result
+					}
+				}
+			}
+		} else if len(jiraParamStrings) > 0 {
+			err = errors.New("JIRA param strings specified but not enough params found. " +
+				"Usage: user|pass|project|issueType|otherFieldKey:otherFieldValue,otherFieldKey:otherFieldValue...")
+		}
+	}
+	logIfFail(resp, err)
+}
+
+//stringContainsInspectrResult returns a bool indicating whether the inspectrResult specified
+// is 'represented' in the string, based on a certain set of rules
+func stringContainsInspectrResult(commentOrDescString string, inspectrResult InspectrResult) (resultMentioned bool) {
+	resultMentioned = strings.Contains(commentOrDescString, "Namespace: "+inspectrResult.Namespace) &&
+		strings.Contains(commentOrDescString, "Name: "+inspectrResult.Name) &&
+		strings.Contains(commentOrDescString, upgradesString(inspectrResult))
+	return
+}
+
+//addInspectrCommentToIssue adds a comment to the JIRA specified, based on the InspectrResult.
+// It doesn't return anything
+func addInspectrCommentToIssue(issueKey string, inspectrResult InspectrResult, jiraClient *jira.Client, jiraURL, webhookID string) {
+	_, resp, err := jiraClient.Issue.AddComment(issueKey, commentFromInspectrResult(inspectrResult))
+	if err == nil {
+		postStringToSlack("just commented on "+jiraURL+"browse/"+issueKey, webhookID)
+	}
+	logIfFail(resp, err)
+}
+
+//upgradesString returns a comma sep string of the upgrade versions, prefixed by "Upgrades: "
+func upgradesString(inspectrResult InspectrResult) (upgradesString string) {
+	var buffer bytes.Buffer
+	buffer.WriteString("Upgrades: ")
+	first := true
+	for _, upgrade := range inspectrResult.Upgrades {
+		if !first {
+			buffer.WriteString(", ")
+		}
+		first = false
+		buffer.WriteString(upgrade)
+	}
+	upgradesString = buffer.String()
+	return
+}
+
+//commentFromInspectrResult returns a JIRA comment containing the InspectrResult details
+func commentFromInspectrResult(inspectrResult InspectrResult) (comment *jira.Comment) {
+	newLineString := "\n"
+	var buffer bytes.Buffer
+	buffer.WriteString("{code}")
+	buffer.WriteString("Name: ")
+	buffer.WriteString(inspectrResult.Name)
+	buffer.WriteString(newLineString)
+	buffer.WriteString("Namespace: ")
+	buffer.WriteString(inspectrResult.Namespace)
+	buffer.WriteString(newLineString)
+	buffer.WriteString("Quantity: ")
+	buffer.WriteString(strconv.FormatInt(inspectrResult.Quantity, 10))
+	buffer.WriteString(newLineString)
+	buffer.WriteString(upgradesString(inspectrResult))
+	buffer.WriteString(newLineString)
+	buffer.WriteString("Version: ")
+	buffer.WriteString(inspectrResult.Version)
+	buffer.WriteString(newLineString)
+	buffer.WriteString("{code}")
+	comment = new(jira.Comment)
+	comment.Body = buffer.String()
+	return
+}
+
+//infraDetailsString returns a string with k8s 'infrastructure' summmary details
+func infraDetailsString(mapkey string) (infraDetailsString string) {
+	newLineString := "\n"
+	var buffer bytes.Buffer
+	buffer.WriteString("image: ")
+	buffer.WriteString(imageFromInspectrMapKey(mapkey))
+	buffer.WriteString(newLineString)
+	buffer.WriteString("cluster: ")
+	buffer.WriteString(clusterFromInspectrMapKey(mapkey))
+	buffer.WriteString(newLineString)
+	buffer.WriteString("pod: ")
+	buffer.WriteString(podFromInspectrMapKey(mapkey))
+	buffer.WriteString(newLineString)
+	buffer.WriteString("container: ")
+	buffer.WriteString(containerFromInspectrMapKey(mapkey))
+	buffer.WriteString(newLineString)
+	buffer.WriteString(newLineString)
+	infraDetailsString = buffer.String()
+	return
+}
+
+//createIssue creates a new JIRA issue with the necessary fields/summary/desc.
+// It doesn't return anything.
+func createIssue(project, summary, issueType, otherFields, mapKey string, inspectrResults []InspectrResult, jiraClient *jira.Client, jiraURL, webhookID string) {
+	var err error
+	var resp *jira.Response
+	var meta *jira.CreateMetaInfo
+	meta, resp, err = jiraClient.Issue.GetCreateMeta(project)
+	if err == nil {
+		metaProject := meta.GetProjectWithKey(project)
+		metaIssuetype := metaProject.GetIssueTypeWithName(issueType)
+		fieldsConfig := make(map[string]string, 0)
+		var buffer bytes.Buffer
+		buffer.WriteString(infraDetailsString(mapKey))
+		for _, inspectrResult := range inspectrResults {
+			buffer.WriteString(commentFromInspectrResult(inspectrResult).Body)
+		}
+		fieldsConfig["Summary"] = summary
+		fieldsConfig["Issue Type"] = issueType
+		fieldsConfig["Description"] = buffer.String()
+		fieldsConfig["Project"] = project
+		if otherFields != "" {
+			for _, otherField := range strings.Split(otherFields, ",") {
+				keyValueStrings := strings.Split(otherField, ":")
+				if len(keyValueStrings) == 2 {
+					fieldsConfig[keyValueStrings[0]] = keyValueStrings[1]
+				}
+			}
+		}
+		var issue *jira.Issue
+		issue, err = jira.InitIssueWithMetaAndFields(metaProject, metaIssuetype, fieldsConfig)
+		if err == nil {
+			issue, resp, err = jiraClient.Issue.Create(issue)
+			if err == nil {
+				postStringToSlack("just created "+jiraURL+"browse/"+issue.Key, webhookID)
+			}
+		}
+	}
+	logIfFail(resp, err)
+}
+
+//logIfFail outputs to glog if err is not nil, also adding a response string if that's not nil
+func logIfFail(resp *jira.Response, err error) {
+	if err != nil {
+		bodyString := "UNK"
+		if resp != nil {
+			body, _ := ioutil.ReadAll(resp.Body)
+			bodyString = string(body)
+		}
+		glog.Errorf("response: %q, error: %q", bodyString, err)
+	}
 }
