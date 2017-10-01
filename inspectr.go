@@ -432,8 +432,11 @@ func podName(fullPodName string) (podName string) {
 			}
 			first = false
 			buffer.WriteString(podNameSplitString)
+		} else {
+			break
 		}
 	}
+	podName = buffer.String()
 	return
 }
 
