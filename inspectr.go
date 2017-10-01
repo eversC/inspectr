@@ -186,7 +186,7 @@ func sliceContainsResult(registeredResults []string, result InspectrResult) (con
 //augmentInternalImageRegistry will, based on whether we're withinAlertWindow, replace the registeredImageMap or
 // augment it with any InspectrResults that are missing, respectively
 func augmentInternalImageRegistry(upgradesMap map[string][]InspectrResult, registeredImageMap map[string][]string,
-	withinAlertWindow bool) {
+	withinAlertWindow bool) map[string][]string {
 
 	if withinAlertWindow {
 		registeredImageMap = registeredImages(upgradesMap)
@@ -205,6 +205,7 @@ func augmentInternalImageRegistry(upgradesMap map[string][]InspectrResult, regis
 			}
 		}
 	}
+	return registeredImageMap
 }
 
 //registeredImages returns a string<-->string map that reflects the string<-->[]InspectrResult map
