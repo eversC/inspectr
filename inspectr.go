@@ -386,6 +386,8 @@ func imageToResultsMap(jsonData *Data) (imageToResultsMap map[string][]InspectrR
 		"Running": struct{}{},
 	}
 	imageToResultsMap = make(map[string][]InspectrResult)
+	projectName := projectName()
+	clusterName := clusterName()
 	for _, item := range jsonData.Items {
 		metadata := item.Metadata
 		namespace := metadata.Namespace
@@ -401,7 +403,7 @@ func imageToResultsMap(jsonData *Data) (imageToResultsMap map[string][]InspectrR
 						image := imageFromURI(containerImage)
 						inspectrResult := InspectrResult{image, namespace,
 							1, nil, versionFromURI(splitImage)}
-						clusterImageString := clusterName() + ":" + image + ":" +
+						clusterImageString := projectName + ":" + clusterName + ":" + image + ":" +
 							podName(metadata.Name) + ":" + container.Name
 						inspectrResults, ok := imageToResultsMap[clusterImageString]
 						if !ok {
@@ -442,8 +444,21 @@ func podName(fullPodName string) (podName string) {
 
 //clusterName returns the name of the cluster the inspectr application is running in
 func clusterName() (clusterName string) {
-	clusterName = "UNK"
-	req, _ := http.NewRequest("GET", "http://metadata/computeMetadata/v1/instance/attributes/cluster-name",
+	clusterName = computeMetadata("instance/attributes/cluster-name")
+	return
+}
+
+//projectName returns the name of the project the inspectr application is running in
+func projectName() (projectName string) {
+	projectName = computeMetadata("project/project-id")
+	return
+}
+
+//computeMetadata fires off an http request to the compute metadata 'api' and
+// returns the string response, or "UNK" if an error is encountered
+func computeMetadata(urlSuffix string) (computeMetadata string) {
+	computeMetadata = "UNK"
+	req, _ := http.NewRequest("GET", "http://metadata/computeMetadata/v1/"+urlSuffix,
 		nil)
 	req.Header.Set("Metadata-Flavor", "Google")
 	client := &http.Client{}
@@ -452,9 +467,9 @@ func clusterName() (clusterName string) {
 	resp, err = client.Do(req)
 	if err == nil {
 		defer resp.Body.Close()
-		clusterBytes, err := ioutil.ReadAll(resp.Body)
+		metaBytes, err := ioutil.ReadAll(resp.Body)
 		if err == nil {
-			clusterName = string(clusterBytes)
+			computeMetadata = string(metaBytes)
 		}
 	}
 	return
@@ -659,32 +674,50 @@ func versionFromURI(splitImage []string) (version string) {
 
 //summaryFromInspectrMapKey returns a 'summary' string for use on an issue in a bugtracking service, e.g. JIRA
 func summaryFromInspectrMapKey(key string) (summary string) {
+	var buffer bytes.Buffer
+	buffer.WriteString("inspectr upgrade")
+	buffer.WriteString(" \\\\[image\\\\]: ")
+	buffer.WriteString(imageFromInspectrMapKey(key))
+	buffer.WriteString(" \\\\[project\\\\]: ")
+	buffer.WriteString(projectFromInspectrMapKey(key))
+	buffer.WriteString(" \\\\[cluster\\\\]: ")
+	buffer.WriteString(clusterFromInspectrMapKey(key))
+	buffer.WriteString(" \\\\[pod\\\\]: ")
+	buffer.WriteString(podFromInspectrMapKey(key))
+	buffer.WriteString(" \\\\[container\\\\]: ")
+	buffer.WriteString(containerFromInspectrMapKey(key))
+
 	summary = "upgrade image: " + imageFromInspectrMapKey(key) + " in cluster: " + clusterFromInspectrMapKey(key) + " pod: " +
 		podFromInspectrMapKey(key) + " container: " + containerFromInspectrMapKey(key)
 	return
 }
 
+func projectFromInspectrMapKey(mapKey string) (project string) {
+	project = strings.Split(mapKey, ":")[0]
+	return
+}
+
 //clusterFromInspectrMapKey returns the cluster string from an inspectr map key
 func clusterFromInspectrMapKey(mapKey string) (cluster string) {
-	cluster = strings.Split(mapKey, ":")[0]
+	cluster = strings.Split(mapKey, ":")[1]
 	return
 }
 
 //imageFromInspectrMapKey returns the image string from an inspectr map key
 func imageFromInspectrMapKey(mapKey string) (image string) {
-	image = strings.Split(mapKey, ":")[1]
+	image = strings.Split(mapKey, ":")[2]
 	return
 }
 
 //podFromInspectrMapKey returns the pod string from an inspectr map key
 func podFromInspectrMapKey(mapKey string) (pod string) {
-	pod = strings.Split(mapKey, ":")[2]
+	pod = strings.Split(mapKey, ":")[3]
 	return
 }
 
 //containerFromInspectrMapKey returns the container string from an inspectr map key
 func containerFromInspectrMapKey(mapKey string) (container string) {
-	container = strings.Split(mapKey, ":")[3]
+	container = strings.Split(mapKey, ":")[4]
 	return
 }
 
@@ -814,6 +847,9 @@ func commentFromInspectrResult(inspectrResult InspectrResult) (comment *jira.Com
 func infraDetailsString(mapkey string) (infraDetailsString string) {
 	newLineString := "\n"
 	var buffer bytes.Buffer
+	buffer.WriteString("project: ")
+	buffer.WriteString(projectFromInspectrMapKey(mapkey))
+	buffer.WriteString(newLineString)
 	buffer.WriteString("image: ")
 	buffer.WriteString(imageFromInspectrMapKey(mapkey))
 	buffer.WriteString(newLineString)
@@ -833,7 +869,9 @@ func infraDetailsString(mapkey string) (infraDetailsString string) {
 
 //createIssue creates a new JIRA issue with the necessary fields/summary/desc.
 // It doesn't return anything.
-func createIssue(project, summary, issueType, otherFields, mapKey string, inspectrResults []InspectrResult, jiraClient *jira.Client, jiraURL, webhookID string) {
+func createIssue(project, summary, issueType, otherFields, mapKey string,
+	inspectrResults []InspectrResult, jiraClient *jira.Client,
+	jiraURL, webhookID string) {
 	var err error
 	var resp *jira.Response
 	var meta *jira.CreateMetaInfo
