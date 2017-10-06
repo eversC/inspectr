@@ -242,7 +242,7 @@ func registeredImageString(result InspectrResult) (resultString string) {
 func upgradesMap(imageToResultsMap map[string][]InspectrResult) (upgradesMap map[string][]InspectrResult, err error) {
 	upgradesMap = make(map[string][]InspectrResult)
 	for k, v := range imageToResultsMap {
-		imageString := strings.Split(k, ":")[2]
+		imageString := imageFromInspectrMapKey(k)
 		var availImages []AvailableImageData
 		switch {
 		case strings.Contains(imageString, "quay.io"):
