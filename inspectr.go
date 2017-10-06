@@ -93,11 +93,8 @@ func invokeInspectrProcess(registeredImages *map[string][]string, webhookID, jir
 		var upgradeMap map[string][]InspectrResult
 		upgradeMap, err = upgradesMap(imageToResultsMap(k8sJSONData))
 		if err == nil {
-			glog.Info("upgradesMap()")
 			upgradeMap = filterUpgradesMap(upgradeMap, *registeredImages, withinAlertWindow)
-			glog.Info("filterUpgradesMap()")
 			augmentInternalImageRegistry(upgradeMap, *registeredImages, withinAlertWindow)
-			glog.Info("augmentInternalImageRegistry()")
 			outputResults(upgradeMap, webhookID, withinAlertWindow)
 			reportResults(upgradeMap, jiraURL, jiraParamString, webhookID)
 			sleep = sleepTime(withinAlertWindow)
@@ -245,7 +242,6 @@ func registeredImageString(result InspectrResult) (resultString string) {
 func upgradesMap(imageToResultsMap map[string][]InspectrResult) (upgradesMap map[string][]InspectrResult, err error) {
 	upgradesMap = make(map[string][]InspectrResult)
 	for k, v := range imageToResultsMap {
-		glog.Info(k)
 		imageString := strings.Split(k, ":")[2]
 		var availImages []AvailableImageData
 		switch {
@@ -412,7 +408,6 @@ func imageToResultsMap(jsonData *Data) (imageToResultsMap map[string][]InspectrR
 							1, nil, versionFromURI(splitImage)}
 						clusterImageString := projectName + ":" + clusterName + ":" + image + ":" +
 							podName(metadata.Name) + ":" + container.Name
-						glog.Info(clusterImageString)
 						inspectrResults, ok := imageToResultsMap[clusterImageString]
 						if !ok {
 							inspectrResults = make([]InspectrResult, 0)
