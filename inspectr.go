@@ -215,6 +215,9 @@ func registeredImages(upgradesMap map[string][]InspectrResult) (registeredImages
 		for _, upgradeResult := range v {
 			registeredImageSlice = append(registeredImageSlice, registeredImageString(upgradeResult))
 		}
+		if registeredImages == nil {
+			registeredImages = make(map[string][]string, 0)
+		}
 		registeredImages[k] = registeredImageSlice
 	}
 	return
