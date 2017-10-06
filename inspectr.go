@@ -684,15 +684,15 @@ func versionFromURI(splitImage []string) (version string) {
 func summaryFromInspectrMapKey(key string) (summary string) {
 	var buffer bytes.Buffer
 	buffer.WriteString("inspectr upgrade")
-	buffer.WriteString(" \\[image\\]: ")
+	buffer.WriteString(" (image): ")
 	buffer.WriteString(imageFromInspectrMapKey(key))
-	buffer.WriteString(" \\[project\\]: ")
+	buffer.WriteString(" (project): ")
 	buffer.WriteString(projectFromInspectrMapKey(key))
-	buffer.WriteString(" \\[cluster\\]: ")
+	buffer.WriteString(" (cluster): ")
 	buffer.WriteString(clusterFromInspectrMapKey(key))
-	buffer.WriteString(" \\[pod\\]: ")
+	buffer.WriteString(" (pod): ")
 	buffer.WriteString(podFromInspectrMapKey(key))
-	buffer.WriteString(" \\[container\\]: ")
+	buffer.WriteString(" (container): ")
 	buffer.WriteString(containerFromInspectrMapKey(key))
 
 	summary = buffer.String()
