@@ -245,6 +245,7 @@ func registeredImageString(result InspectrResult) (resultString string) {
 func upgradesMap(imageToResultsMap map[string][]InspectrResult) (upgradesMap map[string][]InspectrResult, err error) {
 	upgradesMap = make(map[string][]InspectrResult)
 	for k, v := range imageToResultsMap {
+		glog.Info(k)
 		imageString := strings.Split(k, ":")[2]
 		var availImages []AvailableImageData
 		switch {
@@ -411,6 +412,7 @@ func imageToResultsMap(jsonData *Data) (imageToResultsMap map[string][]InspectrR
 							1, nil, versionFromURI(splitImage)}
 						clusterImageString := projectName + ":" + clusterName + ":" + image + ":" +
 							podName(metadata.Name) + ":" + container.Name
+						glog.Info(clusterImageString)
 						inspectrResults, ok := imageToResultsMap[clusterImageString]
 						if !ok {
 							inspectrResults = make([]InspectrResult, 0)
