@@ -94,7 +94,9 @@ func invokeInspectrProcess(registeredImages *map[string][]string, webhookID, jir
 		upgradeMap, err = upgradesMap(imageToResultsMap(k8sJSONData))
 		if err == nil {
 			upgradeMap = filterUpgradesMap(upgradeMap, *registeredImages, withinAlertWindow)
+			glog.Info("filterUpgradesMap()")
 			augmentInternalImageRegistry(upgradeMap, *registeredImages, withinAlertWindow)
+			glog.Info("augmentInternalImageRegistry()")
 			outputResults(upgradeMap, webhookID, withinAlertWindow)
 			reportResults(upgradeMap, jiraURL, jiraParamString, webhookID)
 			sleep = sleepTime(withinAlertWindow)
@@ -690,8 +692,7 @@ func summaryFromInspectrMapKey(key string) (summary string) {
 	buffer.WriteString(" \\\\[container\\\\]: ")
 	buffer.WriteString(containerFromInspectrMapKey(key))
 
-	summary = "upgrade image: " + imageFromInspectrMapKey(key) + " in cluster: " + clusterFromInspectrMapKey(key) + " pod: " +
-		podFromInspectrMapKey(key) + " container: " + containerFromInspectrMapKey(key)
+	summary = buffer.String()
 	return
 }
 
