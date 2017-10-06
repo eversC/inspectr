@@ -93,6 +93,7 @@ func invokeInspectrProcess(registeredImages *map[string][]string, webhookID, jir
 		var upgradeMap map[string][]InspectrResult
 		upgradeMap, err = upgradesMap(imageToResultsMap(k8sJSONData))
 		if err == nil {
+			glog.Info("upgradesMap()")
 			upgradeMap = filterUpgradesMap(upgradeMap, *registeredImages, withinAlertWindow)
 			glog.Info("filterUpgradesMap()")
 			augmentInternalImageRegistry(upgradeMap, *registeredImages, withinAlertWindow)
