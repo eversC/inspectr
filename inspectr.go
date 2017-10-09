@@ -772,7 +772,7 @@ func reportResults(upgradeMap map[string][]InspectrResult, jiraURL, jiraParamStr
 					if resp != nil {
 						body, _ := ioutil.ReadAll(resp.Body)
 						bodyString := string(body)
-						glog.Info("response: %q", bodyString)
+						glog.Infof("response: %q", bodyString)
 					}
 					if len(issues) == 1 {
 						for _, inspectrResult := range v {
