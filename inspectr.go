@@ -774,9 +774,11 @@ func reportResults(upgradeMap map[string][]InspectrResult, jiraURL, jiraParamStr
 							issue := issues[0]
 							descAndCommentsSlice := make([]string, 0)
 							descAndCommentsSlice = append(descAndCommentsSlice, issue.Fields.Description)
-							if len(issue.Fields.Comments.Comments) > 0 {
+							if issue.Fields.Comments != nil {
 								for _, comment := range issue.Fields.Comments.Comments {
-									descAndCommentsSlice = append(descAndCommentsSlice, comment.Body)
+									if comment != nil {
+										descAndCommentsSlice = append(descAndCommentsSlice, comment.Body)
+									}
 								}
 							}
 							for _, descOrComment := range descAndCommentsSlice {
