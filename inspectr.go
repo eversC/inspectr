@@ -290,9 +290,10 @@ func (gcrTag GcrTag) tag() string {
 func upgradeCandidateSlice(version string, availImagesData []AvailableImageData) (upgradeCandidates []AvailableImageData) {
 	versionPrefix := versionPrefix(version)
 	suffix := suffix(version)
-	versionNumerics := versionNumerics(version, suffix, versionPrefix)
+	versionNumericValues := versionNumerics(version, suffix, versionPrefix, true)
+	versionNonNumericValues := versionNumerics(version, suffix, versionPrefix, false)
 	for _, availImageData := range availImagesData {
-		if upgradeable(versionNumerics, availImageData.tag(), suffix, versionPrefix) {
+		if upgradeable(versionNumericValues, versionNonNumericValues, availImageData.tag(), suffix, versionPrefix) {
 			upgradeCandidates = append(upgradeCandidates, availImageData)
 		}
 	}
@@ -315,30 +316,32 @@ func suffix(version string) (suffix string) {
 	return
 }
 
-//versionNumerics returns a slice of the numerical values in the specified version string
-func versionNumerics(version, suffix string, versionPrefix bool) (versionNumerics []int) {
+//versionNumerics returns a slice of the numerical OR non-numerical values in the specified version string
+func versionNumerics(version, suffix string, versionPrefix, numerics bool) (versionNumerics []int) {
 	versionNumeric := version
 	if versionPrefix {
 		versionNumeric = versionNumeric[1 : len(versionNumeric)-1]
 	}
 	versionNumeric = strings.Trim(versionNumeric, suffix)
-	versionStringSlice := strings.Split(versionNumeric, ".")
-	for _, versionString := range versionStringSlice {
-		if numeric, err := strconv.Atoi(versionString); err == nil {
-			versionNumerics = append(versionNumerics, numeric)
+	for _, outerSplitString := range strings.Split(versionNumeric, ".") {
+		for _, innerSplitString := range strings.Split(outerSplitString, "-") {
+			numeric, err := strconv.Atoi(innerSplitString)
+			if (numerics && err == nil) || (!numerics && err != nil) {
+				versionNumerics = append(versionNumerics, numeric)
+			}
 		}
 	}
 	return
 }
 
 //upgradeable returns a bool indicating if the tag represents an upgrade to the version
-func upgradeable(versionNumerics []int, tag, suffix string, versionPrefix bool) (upgradeable bool) {
+func upgradeable(versionNumerics, versionNonNumerics []int, tag, suffix string, versionPrefix bool) (upgradeable bool) {
 	var ignoreTags = map[string]struct{}{
 		"latest": struct{}{},
 	}
 	_, ok := ignoreTags[tag]
 	if !ok && prefixSuffixMatch(tag, suffix, versionPrefix) {
-		upgradeable = numericalVersionUpgrade(versionNumerics, tag, suffix, versionPrefix)
+		upgradeable = numericalVersionUpgrade(versionNumerics, versionNonNumerics, tag, suffix, versionPrefix)
 	}
 	return
 }
@@ -350,16 +353,29 @@ func upgradeable(versionNumerics []int, tag, suffix string, versionPrefix bool) 
 // version slice
 //  e.g. 2.61.0 is an upgrade to 2.60.3 as the numeric in index=1 is greater. 2.60.2 wouldn't be an upgrade as none of
 //  the numerical values (in any index) are greater than in its counterpart
-func numericalVersionUpgrade(versionNumericValues []int, tag, suffix string, versionPrefix bool) (numericUpgrade bool) {
-	tagNumerics := versionNumerics(tag, suffix, versionPrefix)
-	if len(versionNumericValues) == len(tagNumerics) {
-		for i, versionNumeric := range versionNumericValues {
-			if tagNumerics[i] == versionNumeric {
-				continue
-			} else if tagNumerics[i] > versionNumeric {
-				numericUpgrade = true
+func numericalVersionUpgrade(versionNumericValues, versionNonNumericValues []int, tag, suffix string, versionPrefix bool) (numericUpgrade bool) {
+
+	var allNonNumericsMatch = true
+	tagNonNumerics := versionNumerics(tag, suffix, versionPrefix, false)
+	if len(versionNonNumericValues) == len(tagNonNumerics) {
+		for i, versionNonNumeric := range versionNonNumericValues {
+			if tagNonNumerics[i] != versionNonNumeric {
+				allNonNumericsMatch = false
+				break
 			}
-			break
+		}
+	}
+	if allNonNumericsMatch {
+		tagNumerics := versionNumerics(tag, suffix, versionPrefix, true)
+		if len(versionNumericValues) == len(tagNumerics) {
+			for i, versionNumeric := range versionNumericValues {
+				if tagNumerics[i] == versionNumeric {
+					continue
+				} else if tagNumerics[i] > versionNumeric {
+					numericUpgrade = true
+				}
+				break
+			}
 		}
 	}
 	return
@@ -788,9 +804,14 @@ func reportResults(upgradeMap map[string][]InspectrResult, jiraURL, jiraParamStr
 //stringContainsInspectrResult returns a bool indicating whether the inspectrResult specified
 // is 'represented' in the string, based on a certain set of rules
 func stringContainsInspectrResult(commentOrDescString string, inspectrResult InspectrResult) (resultMentioned bool) {
+	glog.Info("commentordescstring: " + commentOrDescString)
+	glog.Info(inspectrResult.Namespace)
+	glog.Info(inspectrResult.Name)
+	glog.Info(upgradesString(inspectrResult))
 	resultMentioned = strings.Contains(commentOrDescString, "Namespace: "+inspectrResult.Namespace) &&
 		strings.Contains(commentOrDescString, "Name: "+inspectrResult.Name) &&
 		strings.Contains(commentOrDescString, upgradesString(inspectrResult))
+	glog.Info(resultMentioned)
 	return
 }
 
