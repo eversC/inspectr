@@ -772,14 +772,17 @@ func reportResults(upgradeMap map[string][]InspectrResult, jiraURL, jiraParamStr
 						for _, inspectrResult := range v {
 							var resultMentioned bool
 							issue := issues[0]
-							if issue.Fields.Comments == nil {
-								resultMentioned = stringContainsInspectrResult(issue.Fields.Description, inspectrResult)
-							} else {
+							descAndCommentsSlice := make([]string, 0)
+							descAndCommentsSlice = append(descAndCommentsSlice, issue.Fields.Description)
+							if issue.Fields.Comments.Comments != nil && len(issue.Fields.Comments.Comments) > 0 {
 								for _, comment := range issue.Fields.Comments.Comments {
-									if stringContainsInspectrResult(comment.Body, inspectrResult) {
-										resultMentioned = true
-										break
-									}
+									descAndCommentsSlice = append(descAndCommentsSlice, comment.Body)
+								}
+							}
+							for _, descOrComment := range descAndCommentsSlice {
+								if stringContainsInspectrResult(descOrComment, inspectrResult) {
+									resultMentioned = true
+									break
 								}
 							}
 							if !resultMentioned {
