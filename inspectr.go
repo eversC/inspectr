@@ -767,7 +767,13 @@ func reportResults(upgradeMap map[string][]InspectrResult, jiraURL, jiraParamStr
 				summary := summaryFromInspectrMapKey(k)
 				var issues []jira.Issue
 				issues, resp, err = jiraClient.Issue.Search("summary ~ \""+summary+"\" AND project = "+project, nil)
+
 				if err == nil {
+					if resp != nil {
+						body, _ := ioutil.ReadAll(resp.Body)
+						bodyString := string(body)
+						glog.Info("response: %q", bodyString)
+					}
 					if len(issues) == 1 {
 						for _, inspectrResult := range v {
 							var resultMentioned bool
