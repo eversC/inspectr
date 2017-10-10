@@ -766,34 +766,14 @@ func reportResults(upgradeMap map[string][]InspectrResult, jiraURL, jiraParamStr
 			for k, v := range upgradeMap {
 				summary := summaryFromInspectrMapKey(k)
 				var issues []jira.Issue
-				issues, resp, err = jiraClient.Issue.Search("summary ~ \""+summary+"\" AND project = "+project, nil)
-
+				issues, resp, err = jiraClient.Issue.Search("summary ~ \""+summary+"\""+
+					"AND project = "+project+" AND statusCategory != Done", nil)
 				if err == nil {
-					if resp != nil {
-						body, _ := ioutil.ReadAll(resp.Body)
-						bodyString := string(body)
-						glog.Infof("response: %q", bodyString)
-					}
 					if len(issues) == 1 {
 						for _, inspectrResult := range v {
-							var resultMentioned bool
-							issue := issues[0]
-							descAndCommentsSlice := make([]string, 0)
-							descAndCommentsSlice = append(descAndCommentsSlice, issue.Fields.Description)
-							if issue.Fields.Comments != nil {
-								for _, comment := range issue.Fields.Comments.Comments {
-									if comment != nil {
-										descAndCommentsSlice = append(descAndCommentsSlice, comment.Body)
-									}
-								}
-							}
-							for _, descOrComment := range descAndCommentsSlice {
-								if stringContainsInspectrResult(descOrComment, inspectrResult) {
-									resultMentioned = true
-									break
-								}
-							}
-							if !resultMentioned {
+							var issue *jira.Issue
+							issue, resp, err = jiraClient.Issue.Get(issues[0].Key, nil)
+							if err == nil && !resultMentioned(issue, inspectrResult) {
 								addInspectrCommentToIssue(issue.Key, inspectrResult, jiraClient, jiraURL, webhookID)
 							}
 						}
@@ -812,13 +792,30 @@ func reportResults(upgradeMap map[string][]InspectrResult, jiraURL, jiraParamStr
 	logIfFail(resp, err)
 }
 
+//resultMentioned returns a boolean indicating whether the specified InspectrResult
+// is detailed in a comment on the specified JIRA issue
+func resultMentioned(issue *jira.Issue, inspectrResult InspectrResult) (resultMentioned bool) {
+	descAndCommentsSlice := make([]string, 0)
+	descAndCommentsSlice = append(descAndCommentsSlice, issue.Fields.Description)
+	if issue.Fields.Comments != nil {
+		for _, comment := range issue.Fields.Comments.Comments {
+			if comment != nil {
+				descAndCommentsSlice = append(descAndCommentsSlice, comment.Body)
+			}
+		}
+	}
+	for _, descOrComment := range descAndCommentsSlice {
+		if stringContainsInspectrResult(descOrComment, inspectrResult) {
+			resultMentioned = true
+			break
+		}
+	}
+	return
+}
+
 //stringContainsInspectrResult returns a bool indicating whether the inspectrResult specified
 // is 'represented' in the string, based on a certain set of rules
 func stringContainsInspectrResult(commentOrDescString string, inspectrResult InspectrResult) (resultMentioned bool) {
-	glog.Info("commentordescstring: " + commentOrDescString)
-	glog.Info(inspectrResult.Namespace)
-	glog.Info(inspectrResult.Name)
-	glog.Info(upgradesString(inspectrResult))
 	resultMentioned = strings.Contains(commentOrDescString, "Namespace: "+inspectrResult.Namespace) &&
 		strings.Contains(commentOrDescString, "Name: "+inspectrResult.Name) &&
 		strings.Contains(commentOrDescString, upgradesString(inspectrResult))
@@ -856,6 +853,8 @@ func upgradesString(inspectrResult InspectrResult) (upgradesString string) {
 func commentFromInspectrResult(inspectrResult InspectrResult) (comment *jira.Comment) {
 	newLineString := "\n"
 	var buffer bytes.Buffer
+	buffer.WriteString("new version discovered:")
+	buffer.WriteString(newLineString)
 	buffer.WriteString("{code}")
 	buffer.WriteString("Name: ")
 	buffer.WriteString(inspectrResult.Name)
