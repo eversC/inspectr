@@ -596,6 +596,7 @@ func postResultToSlack(upgradeMap map[string][]InspectrResult, webhookID string)
 		buffer.WriteString("new-versions: ")
 		buffer.WriteString(newVersionStringFromInspectrResults(v))
 		buffer.WriteString(codeSep)
+		buffer.WriteString(newLineString)
 	}
 	postStringToSlack(buffer.String(), webhookID)
 }
