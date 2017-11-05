@@ -573,7 +573,107 @@ func outputResults(upgradeMap map[string][]InspectrResult, webhookID string, wit
 //postResultToSlack posts a string representation of the inspectrResultMap to slack
 //It doesn't return anything.
 func postResultToSlack(upgradeMap map[string][]InspectrResult, webhookID string) {
-	postStringToSlack(fmt.Sprintf("%#v", upgradeMap), webhookID)
+	var buffer bytes.Buffer
+	newLineString := "\n"
+	codeSep := "```"
+	for k, v := range upgradeMap {
+		buffer.WriteString(codeSep)
+		buffer.WriteString("project: ")
+		buffer.WriteString(projectFromInspectrMapKey(k))
+		buffer.WriteString(newLineString)
+		buffer.WriteString("cluster: ")
+		buffer.WriteString(clusterFromInspectrMapKey(k))
+		buffer.WriteString(newLineString)
+		buffer.WriteString("image: ")
+		buffer.WriteString(imageFromInspectrMapKey(k))
+		buffer.WriteString(newLineString)
+		buffer.WriteString("namespaces: ")
+		buffer.WriteString(namespaceStringFromInspectrResults(v))
+		buffer.WriteString(newLineString)
+		buffer.WriteString("current-versions: ")
+		buffer.WriteString(currentVersionStringFromInspectrResults(v))
+		buffer.WriteString(newLineString)
+		buffer.WriteString("new-versions: ")
+		buffer.WriteString(newVersionStringFromInspectrResults(v))
+		buffer.WriteString(codeSep)
+		buffer.WriteString(newLineString)
+	}
+	postStringToSlack(buffer.String(), webhookID)
+}
+
+//newVersionStringFromInspectrResults returns a string representing the new
+//upgradeable versions defined in the InspectrResult slice
+func newVersionStringFromInspectrResults(inspectrResults []InspectrResult) (versions string) {
+	versions = cappedSlackString(newVersionsFromInspectrResults(inspectrResults))
+	return
+}
+
+//newVersionsFromInspectrResults returns a string slice that represents the
+//new versions defined in the InspectrResult slice
+func newVersionsFromInspectrResults(inspectrResults []InspectrResult) (versions []string) {
+	for _, inspectrResult := range inspectrResults {
+		for _, upgradeVersion := range inspectrResult.Upgrades {
+			versions = append(versions, upgradeVersion)
+		}
+	}
+	return
+}
+
+//currentVersionStringFromInspectrResults returns a string representing the
+//current versions defined in the InspectrResult slice
+func currentVersionStringFromInspectrResults(inspectrResults []InspectrResult) (versions string) {
+	versions = cappedSlackString(currentVersionsFromInspectrResults(inspectrResults))
+	return
+}
+
+//currentVersionsFromInspectrResults returns a string slice that represents the
+//current versions defined in the InspectrResult slice
+func currentVersionsFromInspectrResults(inspectrResults []InspectrResult) (versions []string) {
+	for _, inspectrResult := range inspectrResults {
+		versions = append(versions, inspectrResult.Version)
+	}
+	return
+}
+
+//namespaceStringFromInspectrResults returns a string representing the
+//namespaces defined in the InspectrResult slice
+func namespaceStringFromInspectrResults(inspectrResults []InspectrResult) (namespaces string) {
+	namespaces = cappedSlackString(namespacesFromInspectrResults(inspectrResults))
+	return
+}
+
+//namespacesFromInspectrResults returns a string slice that represents the
+//namespaces defined in the InspectrResult slice
+func namespacesFromInspectrResults(inspectrResults []InspectrResult) (namespaces []string) {
+	for _, inspectrResult := range inspectrResults {
+		namespaces = append(namespaces, inspectrResult.Namespace)
+	}
+	return
+}
+
+//cappedSlackString returns a comma separated string formed from the string
+//slice specified. If the limit of number of strings is hit, there'll be a
+//suffix appended of " + [x] more" where x is the number above the limit
+func cappedSlackString(candidateStrings []string) (outputString string) {
+	var buffer bytes.Buffer
+	count := 0
+	for index, versionString := range candidateStrings {
+		if index < 5 {
+			if index != 0 {
+				buffer.WriteString(", ")
+			}
+			buffer.WriteString(versionString)
+		} else {
+			count++
+		}
+	}
+	if count > 0 {
+		buffer.WriteString(" + ")
+		buffer.WriteString(strconv.Itoa(count))
+		buffer.WriteString(" more")
+	}
+	outputString = buffer.String()
+	return
 }
 
 //postStringToSlack posts the specified string to the specified slack webhook.
