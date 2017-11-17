@@ -1,6 +1,10 @@
 package main
 
-import "testing"
+import (
+	"testing"
+
+	jira "github.com/andygrunwald/go-jira"
+)
 
 func TestDockerTag(t *testing.T) {
 	var dockerTag DockerTag
@@ -193,6 +197,51 @@ func TestContainerFromInspectrMapKey(t *testing.T) {
 		if v := containerFromInspectrMapKey(inspectrMapKey.inspectrMapKey); v != inspectrMapKey.container {
 			t.Errorf("containerFromInspectrMapKey(%s) returned %s, expected %s",
 				inspectrMapKey.inspectrMapKey, v, inspectrMapKey.container)
+		}
+	}
+}
+
+var resultMentionedVars = []struct {
+	commentBody             string
+	inspectrResultName      string
+	inspectrResultNamespace string
+	upgrades                []string
+	resultMentioned         bool
+}{
+	{"Name: banana\nNamespace: banana-namespace\nUpgrades: v0.0.1, v0.0.2",
+		"banana", "banana-namespace", []string{"v0.0.1", "v0.0.2"}, true},
+	{"Name: apples\nNamespace: apples-namespace\nUpgrades: v0.0.1, v0.0.2",
+		"apples", "apples-namespace", []string{"v0.0.1", "v0.0.3"}, false},
+	{"Name: pears\nUpgrades: v0.0.1, v0.0.2",
+		"pears", "pears-namespace", []string{"v0.0.1", "v0.0.2"}, false},
+	{"Namespace: banana-namespace\nUpgrades: v0.0.1, v0.0.2",
+		"banana", "banana-namespace", []string{"v0.0.1", "v0.0.2"}, false},
+	{"Name: banana\nNamespace: banana-namespace\nUpgrades: v0.0.1, v0.0.2",
+		"apples", "pears-namespace", []string{"v0.0.1", "v0.0.2"}, false},
+}
+
+func TestResultMentioned(t *testing.T) {
+	for _, resultMentionedVar := range resultMentionedVars {
+		var issue = new(jira.Issue)
+		var fields = new(jira.IssueFields)
+		var comments = new(jira.Comments)
+		var commentSlice = make([]*jira.Comment, 1)
+		var comment = new(jira.Comment)
+		comment.Body = resultMentionedVar.commentBody
+		commentSlice[0] = comment
+		comments.Comments = commentSlice
+		fields.Comments = comments
+		issue.Fields = fields
+		var inspectrResult InspectrResult
+		inspectrResult.Name = resultMentionedVar.inspectrResultName
+		inspectrResult.Namespace = resultMentionedVar.inspectrResultNamespace
+		inspectrResult.Upgrades = resultMentionedVar.upgrades
+
+		if v := resultMentioned(issue, inspectrResult); v !=
+			resultMentionedVar.resultMentioned {
+			t.Errorf("resultMentioned(%+v\n, %+v)\n returned %t, expected %t",
+				issue.Fields.Comments.Comments[0].Body, inspectrResult, v,
+				resultMentionedVar.resultMentioned)
 		}
 	}
 }
