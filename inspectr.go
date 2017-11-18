@@ -33,8 +33,8 @@ type DockerTag struct {
 	Name  string `json:"name"`
 }
 
-//QuayTag type
-type QuayTag struct {
+//V2Tag type
+type V2Tag struct {
 	Name string
 }
 
@@ -246,10 +246,12 @@ func upgradesMap(imageToResultsMap map[string][]InspectrResult) (upgradesMap map
 		imageString := imageFromInspectrMapKey(k)
 		var availImages []AvailableImageData
 		switch {
-		case strings.Contains(imageString, "quay.io"):
-			availImages, err = quayTagSlice(imageString)
 		case strings.Contains(imageString, "gcr.io"):
 			availImages, err = gcrTagSlice(imageString)
+		case strings.Contains(imageString, "quay.io"):
+			availImages, err = v2TagSlice("quay.io", imageString)
+		case strings.Contains(imageString, "zalan.do"):
+			availImages, err = v2TagSlice("zalan.do", imageString)
 		default:
 			availImages, err = dockerTagSlice(imageString)
 		}
@@ -276,9 +278,9 @@ func (dockerTag DockerTag) tag() string {
 	return dockerTag.Name
 }
 
-//QuayTag implementation of AvailableImageData
-func (quayTag QuayTag) tag() string {
-	return quayTag.Name
+//V2Tag implementation of AvailableImageData
+func (v2Tag V2Tag) tag() string {
+	return v2Tag.Name
 }
 
 //GcrTag implementaton of AvailableImageData
@@ -464,26 +466,26 @@ func decodeData(r io.Reader) (x *Data, err error) {
 	return
 }
 
-//decodeDockerTag returns a DockerTag type, decoded from the specified Reader, and an error
+//decodeDockerTag returns a DockerTag slice, decoded from the specified Reader, and an error
 func decodeDockerTag(r io.Reader) ([]DockerTag, error) {
 	x := new([]DockerTag)
 	err := json.NewDecoder(r).Decode(x)
 	return *x, err
 }
 
-//decodeQuayTag returns a QuayTag type, decoded from the specified Reader, and an error
-func decodeQuayTag(r io.Reader) (quayTags []QuayTag, err error) {
+//decodeV2Tag returns a V2Tag slice, decoded from the specified Reader, and an error
+func decodeV2Tag(r io.Reader) (v2Tags []V2Tag, err error) {
 	x := new(List)
 	err = json.NewDecoder(r).Decode(x)
 	for _, tag := range []string(x.Tags) {
-		var quayTag = new(QuayTag)
-		quayTag.Name = tag
-		quayTags = append(quayTags, *quayTag)
+		var v2Tag = new(V2Tag)
+		v2Tag.Name = tag
+		v2Tags = append(v2Tags, *v2Tag)
 	}
 	return
 }
 
-//decodeGcrTag returns a GcrTag type, decoded from the specified Reader, and an error
+//decodeGcrTag returns a GcrTag slice, decoded from the specified Reader, and an error
 func decodeGcrTag(r io.Reader) (gcrTags []GcrTag, err error) {
 	x := new(Gcr)
 	err = json.NewDecoder(r).Decode(x)
@@ -516,19 +518,19 @@ func dockerTagSlice(repo string) (imagesData []AvailableImageData, err error) {
 	return
 }
 
-//quayTagSlice returns an AvailableImageData slice representing all available tags for the specified repo
-func quayTagSlice(repo string) (imagesData []AvailableImageData, err error) {
-	repo = strings.Replace(repo, "quay.io/", "", 1)
-	imageURI := "https://quay.io/v2/" + repo + "/tags/list"
+//v2TagSlice returns an AvailableImageData slice representing all available tags for the specified repo
+func v2TagSlice(urlPrefix, repo string) (imagesData []AvailableImageData, err error) {
+	repo = strings.Replace(repo, urlPrefix+"/", "", 1)
+	imageURI := "https://" + urlPrefix + "/v2/" + repo + "/tags/list"
 	resp, err := http.Get(imageURI)
 	if err == nil {
 		if resp.StatusCode == 200 {
 			defer resp.Body.Close()
-			var quayTags []QuayTag
-			quayTags, err = decodeQuayTag(resp.Body)
+			var v2Tags []V2Tag
+			v2Tags, err = decodeV2Tag(resp.Body)
 			if err == nil {
-				for _, quayTag := range []QuayTag(quayTags) {
-					imagesData = append(imagesData, quayTag)
+				for _, v2Tag := range []V2Tag(v2Tags) {
+					imagesData = append(imagesData, v2Tag)
 				}
 			}
 		} else {
