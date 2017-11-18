@@ -26,13 +26,13 @@ func TestGcrTag(t *testing.T) {
 	}
 }
 
-func TestQuayTag(t *testing.T) {
-	var quayTag QuayTag
-	expected := "quay"
-	quayTag.Name = expected
-	tag := quayTag.tag()
+func TestV2Tag(t *testing.T) {
+	var v2Tag V2Tag
+	expected := "v2"
+	v2Tag.Name = expected
+	tag := v2Tag.tag()
 	if tag != expected {
-		t.Errorf("Quay tag was incorrect, got: %s, want: %s.", tag, expected)
+		t.Errorf("Docker v2 tag was incorrect, got: %s, want: %s.", tag, expected)
 	}
 }
 
