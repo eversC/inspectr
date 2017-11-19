@@ -63,16 +63,19 @@ func main() {
 	glog.Info("hello inspectr")
 	registeredImages := make(map[string][]string)
 	glog.Info("initialized local image registry cache")
-
 	slackWebhookKey := "INSPECTR_SLACK_WEBHOOK_ID"
 	jiraURLKey := "INSPECTR_JIRA_URL"
 	jiraParamKey := "INSPECTR_JIRA_PARAMS"
-
 	webhookID := os.Getenv(slackWebhookKey)
 	jiraURL := os.Getenv(jiraURLKey)
 	jiraParams := os.Getenv(jiraParamKey)
-
 	glog.Info("picked up env vars")
+	http.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("OK"))
+	})
+	go func() {
+		http.ListenAndServe(":8080", nil)
+	}()
 	glog.Info("about to enter life-of-pod loop")
 	for {
 		time.Sleep(time.Duration(invokeInspectrProcess(&registeredImages, webhookID, jiraURL, jiraParams)) * time.Second)
