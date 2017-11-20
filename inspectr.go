@@ -503,7 +503,11 @@ func decodeGcrTag(r io.Reader) (gcrTags []GcrTag, err error) {
 //dockerTagSlice returns an AvailableImageData slice representing all available tags for the specified repo
 func dockerTagSlice(repo string) (imagesData []AvailableImageData, err error) {
 	imageURI := "https://registry.hub.docker.com/v1/repositories/" + repo + "/tags"
-	resp, err := http.Get(imageURI)
+	timeout := time.Duration(30 * time.Second)
+	client := http.Client{
+		Timeout: timeout,
+	}
+	resp, err := client.Get(imageURI)
 	if err == nil {
 		if resp.StatusCode == 200 {
 			defer resp.Body.Close()
@@ -525,7 +529,11 @@ func dockerTagSlice(repo string) (imagesData []AvailableImageData, err error) {
 func v2TagSlice(urlPrefix, repo string) (imagesData []AvailableImageData, err error) {
 	repo = strings.Replace(repo, urlPrefix+"/", "", 1)
 	imageURI := "https://" + urlPrefix + "/v2/" + repo + "/tags/list"
-	resp, err := http.Get(imageURI)
+	timeout := time.Duration(30 * time.Second)
+	client := http.Client{
+		Timeout: timeout,
+	}
+	resp, err := client.Get(imageURI)
 	if err == nil {
 		if resp.StatusCode == 200 {
 			defer resp.Body.Close()
@@ -547,7 +555,11 @@ func v2TagSlice(urlPrefix, repo string) (imagesData []AvailableImageData, err er
 func gcrTagSlice(repo string) (imagesData []AvailableImageData, err error) {
 	repo = strings.Replace(repo, "gcr.io/", "", 1)
 	imageURI := "https://gcr.io/v2/" + repo + "/tags/list"
-	resp, err := http.Get(imageURI)
+	timeout := time.Duration(30 * time.Second)
+	client := http.Client{
+		Timeout: timeout,
+	}
+	resp, err := client.Get(imageURI)
 	if err == nil {
 		if resp.StatusCode == 200 {
 			defer resp.Body.Close()
