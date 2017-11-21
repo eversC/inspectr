@@ -201,6 +201,26 @@ func TestContainerFromInspectrMapKey(t *testing.T) {
 	}
 }
 
+var locationStrings = []struct {
+	locationExpected string
+	locationActual   string
+}{
+	{"Europe/London", "Europe/London"},
+	{"Europe/banana", "Local"},
+	{"Local", "Local"},
+	{"", "UTC"},
+	{"UTC", "UTC"},
+}
+
+func TestLocation(t *testing.T) {
+	for _, locationString := range locationStrings {
+		if v := location(locationString.locationExpected).String(); v != locationString.locationActual {
+			t.Errorf("location(%s).String() returned %s, expected %s",
+				locationString.locationExpected, v, locationString.locationActual)
+		}
+	}
+}
+
 var resultMentionedVars = []struct {
 	commentBody             string
 	inspectrResultName      string
