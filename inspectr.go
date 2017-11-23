@@ -66,9 +66,11 @@ func main() {
 	slackWebhookKey := "INSPECTR_SLACK_WEBHOOK_ID"
 	jiraURLKey := "INSPECTR_JIRA_URL"
 	jiraParamKey := "INSPECTR_JIRA_PARAMS"
+	timezoneKey := "INSPECTR_TIMEZONE"
 	webhookID := os.Getenv(slackWebhookKey)
 	jiraURL := os.Getenv(jiraURLKey)
 	jiraParams := os.Getenv(jiraParamKey)
+	timezone := os.Getenv(timezoneKey)
 	glog.Info("picked up env vars")
 	http.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("OK"))
@@ -78,8 +80,23 @@ func main() {
 	}()
 	glog.Info("about to enter life-of-pod loop")
 	for {
-		time.Sleep(time.Duration(invokeInspectrProcess(&registeredImages, webhookID, jiraURL, jiraParams)) * time.Second)
+		time.Sleep(time.Duration(invokeInspectrProcess(&registeredImages, webhookID,
+			jiraURL, jiraParams, location(timezone))) * time.Second)
 	}
+}
+
+//location returns a time.Location that represents the specified location string
+// "" returns UTC, "UTC" returns UTC, "Local" returns Local, any valid
+// location string returns the location correspnding to the file in the
+// IANA Time Zone database
+// Default is Local
+func location(locationString string) (loc *time.Location) {
+	var err error
+	loc, err = time.LoadLocation(locationString)
+	if err != nil {
+		loc, _ = time.LoadLocation("Local")
+	}
+	return
 }
 
 //invokeInspectrProcess attempts to run through as much of the 'process' as it can. At appropriate points it may
@@ -87,13 +104,14 @@ func main() {
 // value.
 // if everything goes okay, the sleep value returned is either pretty small (as inspectr should be quick to detect
 // any 'unregistered' images, or a bit longer if current time is withinAlertWindow
-func invokeInspectrProcess(registeredImages *map[string][]string, webhookID, jiraURL, jiraParamString string) (sleep int) {
+func invokeInspectrProcess(registeredImages *map[string][]string, webhookID,
+	jiraURL, jiraParamString string, loc *time.Location) (sleep int) {
 	sleep = 300
 	var k8sJSONData *Data
 	var err error
 	k8sJSONData, err = jsonData()
 	if err == nil {
-		withinAlertWindow := withinAlertWindow()
+		withinAlertWindow := withinAlertWindow(loc)
 		var upgradeMap map[string][]InspectrResult
 		upgradeMap, err = upgradesMap(imageToResultsMap(k8sJSONData))
 		if err == nil {
@@ -132,10 +150,10 @@ func sleepTime(withinAlertWindow bool) (sleepTime int) {
 }
 
 //withinAlertWindow returns a bool indicating whether current time is within the scheduled daily/weekly alert window
-func withinAlertWindow() (withinAlertWindow bool) {
+func withinAlertWindow(loc *time.Location) (withinAlertWindow bool) {
 	//TODO: get a weekday value (from env var?)
 	weekday := -1
-	now := time.Now()
+	now := time.Now().In(loc)
 	preferredAlertTime := time.Date(int(now.Year()), now.Month(), int(now.Day()),
 		11, 30, 0, 0, now.Location())
 	windowSize := 300
