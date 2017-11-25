@@ -168,9 +168,8 @@ func withinAlertWindow(schedule string, loc *time.Location) (withinAlertWindow b
 
 func isValidDayOfWeek(day string) (isDayOfWeek bool) {
 	isDayOfWeek = day == "MONDAY" || day == "TUESDAY" ||
-		day == "WEDNESDAY" || day == "THURSDAY" ||
-		day == "FRIDAY" || day == "SATURDAY" ||
-		day == "SUNDAY"
+		day == "WEDNESDAY" || day == "THURSDAY" || day == "FRIDAY" ||
+		day == "SATURDAY" || day == "SUNDAY"
 	return
 }
 
@@ -190,10 +189,10 @@ func timeFromSchedule(scheduleSplit []string, isWeekly bool, now time.Time,
 	}
 	if scheduleTimeString != "" {
 		hourInt, err := strconv.Atoi(scheduleTimeString[0:2])
-		if err != nil {
-			hourOfDay = hourInt
+		if err == nil {
 			minInt, err := strconv.Atoi(scheduleTimeString[2:4])
-			if err != nil {
+			if err == nil {
+				hourOfDay = hourInt
 				minOfHour = minInt
 			}
 		}
