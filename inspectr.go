@@ -176,7 +176,9 @@ func isValidDayOfWeek(day string) (isDayOfWeek bool) {
 
 func timeFromSchedule(scheduleSplit []string, isWeekly bool, now time.Time,
 	loc *time.Location) (preferredAlertTime time.Time) {
-	scheduleTimeString := "1000"
+	var scheduleTimeString string
+	hourOfDay := 10
+	minOfHour := 0
 	if isWeekly {
 		if len(scheduleSplit) == 2 && len(scheduleSplit[1]) == 4 {
 			scheduleTimeString = scheduleSplit[1]
@@ -186,8 +188,16 @@ func timeFromSchedule(scheduleSplit []string, isWeekly bool, now time.Time,
 			scheduleTimeString = scheduleSplit[0]
 		}
 	}
-	hourOfDay, _ := strconv.Atoi(scheduleTimeString[0:2])
-	minOfHour, _ := strconv.Atoi(scheduleTimeString[2:4])
+	if scheduleTimeString != "" {
+		hourInt, err := strconv.Atoi(scheduleTimeString[0:2])
+		if err != nil {
+			hourOfDay = hourInt
+			minInt, err := strconv.Atoi(scheduleTimeString[2:4])
+			if err != nil {
+				minOfHour = minInt
+			}
+		}
+	}
 	preferredAlertTime = time.Date(now.Year(), now.Month(), now.Day(), hourOfDay,
 		minOfHour, 0, 0, loc)
 	return
