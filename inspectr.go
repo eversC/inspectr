@@ -67,10 +67,12 @@ func main() {
 	jiraURLKey := "INSPECTR_JIRA_URL"
 	jiraParamKey := "INSPECTR_JIRA_PARAMS"
 	timezoneKey := "INSPECTR_TIMEZONE"
+	scheduleKey := "INSPECTR_SCHEDULE"
 	webhookID := os.Getenv(slackWebhookKey)
 	jiraURL := os.Getenv(jiraURLKey)
 	jiraParams := os.Getenv(jiraParamKey)
 	timezone := os.Getenv(timezoneKey)
+	schedule := os.Getenv(scheduleKey)
 	glog.Info("picked up env vars")
 	http.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("OK"))
@@ -81,7 +83,7 @@ func main() {
 	glog.Info("about to enter life-of-pod loop")
 	for {
 		time.Sleep(time.Duration(invokeInspectrProcess(&registeredImages, webhookID,
-			jiraURL, jiraParams, location(timezone))) * time.Second)
+			jiraURL, jiraParams, schedule, location(timezone))) * time.Second)
 	}
 }
 
@@ -105,13 +107,13 @@ func location(locationString string) (loc *time.Location) {
 // if everything goes okay, the sleep value returned is either pretty small (as inspectr should be quick to detect
 // any 'unregistered' images, or a bit longer if current time is withinAlertWindow
 func invokeInspectrProcess(registeredImages *map[string][]string, webhookID,
-	jiraURL, jiraParamString string, loc *time.Location) (sleep int) {
+	jiraURL, jiraParamString, schedule string, loc *time.Location) (sleep int) {
 	sleep = 300
 	var k8sJSONData *Data
 	var err error
 	k8sJSONData, err = jsonData()
 	if err == nil {
-		withinAlertWindow := withinAlertWindow(loc)
+		withinAlertWindow := withinAlertWindow(schedule, loc)
 		var upgradeMap map[string][]InspectrResult
 		upgradeMap, err = upgradesMap(imageToResultsMap(k8sJSONData))
 		if err == nil {
@@ -150,17 +152,44 @@ func sleepTime(withinAlertWindow bool) (sleepTime int) {
 }
 
 //withinAlertWindow returns a bool indicating whether current time is within the scheduled daily/weekly alert window
-func withinAlertWindow(loc *time.Location) (withinAlertWindow bool) {
-	//TODO: get a weekday value (from env var?)
-	weekday := -1
+func withinAlertWindow(schedule string, loc *time.Location) (withinAlertWindow bool) {
+	scheduleSplit := strings.Split(schedule, "|")
+	dayOfWeek := strings.ToUpper(scheduleSplit[0])
+	isWeekly := isValidDayOfWeek(dayOfWeek)
 	now := time.Now().In(loc)
-	preferredAlertTime := time.Date(int(now.Year()), now.Month(), int(now.Day()),
-		11, 30, 0, 0, now.Location())
-	windowSize := 300
-	windowEnd := preferredAlertTime.Add(time.Duration(windowSize) * time.Second)
-	if weekday == -1 || int(now.Weekday()) == weekday {
+	preferredAlertTime := timeFromSchedule(scheduleSplit, isWeekly, now, loc)
+	if !isWeekly || strings.ToUpper(now.Weekday().String()) == dayOfWeek {
+		windowSize := 300
+		windowEnd := preferredAlertTime.Add(time.Duration(windowSize) * time.Second)
 		withinAlertWindow = now.After(preferredAlertTime) && now.Before(windowEnd)
 	}
+	return
+}
+
+func isValidDayOfWeek(day string) (isDayOfWeek bool) {
+	isDayOfWeek = day == "MONDAY" || day == "TUESDAY" ||
+		day == "WEDNESDAY" || day == "THURSDAY" ||
+		day == "FRIDAY" || day == "SATURDAY" ||
+		day == "SUNDAY"
+	return
+}
+
+func timeFromSchedule(scheduleSplit []string, isWeekly bool, now time.Time,
+	loc *time.Location) (preferredAlertTime time.Time) {
+	scheduleTimeString := "1000"
+	if isWeekly {
+		if len(scheduleSplit) == 2 && len(scheduleSplit[1]) == 4 {
+			scheduleTimeString = scheduleSplit[1]
+		}
+	} else {
+		if len(scheduleSplit[0]) == 4 {
+			scheduleTimeString = scheduleSplit[0]
+		}
+	}
+	hourOfDay, _ := strconv.Atoi(scheduleTimeString[0:2])
+	minOfHour, _ := strconv.Atoi(scheduleTimeString[2:4])
+	preferredAlertTime = time.Date(now.Year(), now.Month(), now.Day(), hourOfDay,
+		minOfHour, 0, 0, loc)
 	return
 }
 
