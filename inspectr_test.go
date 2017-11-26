@@ -2,6 +2,7 @@ package main
 
 import (
 	"testing"
+	"time"
 
 	jira "github.com/andygrunwald/go-jira"
 )
@@ -262,6 +263,54 @@ func TestResultMentioned(t *testing.T) {
 			t.Errorf("resultMentioned(%+v\n, %+v)\n returned %t, expected %t",
 				issue.Fields.Comments.Comments[0].Body, inspectrResult, v,
 				resultMentionedVar.resultMentioned)
+		}
+	}
+}
+
+var days = []struct {
+	dayString string
+	isValid   bool
+}{
+	{"MONDAY", true},
+	{"BANANADAY", false},
+}
+
+func TestIsValidDayOfWeek(t *testing.T) {
+	for _, day := range days {
+		if v := isValidDayOfWeek(day.dayString); v != day.isValid {
+			t.Errorf("isValidDayOfWeek(%s) returned %t, expected: %t", day.dayString,
+				v, day.isValid)
+		}
+	}
+}
+
+var timevars = []struct {
+	scheduleStrings []string
+	isWeekly        bool
+	hour            int
+	min             int
+}{
+	{[]string{""}, false, 10, 0},
+	{[]string{""}, true, 10, 0},
+	{[]string{"1234567"}, false, 10, 0},
+	{[]string{"1234567"}, true, 10, 0},
+	{[]string{"1430"}, false, 14, 30},
+	{[]string{"1430"}, true, 10, 0},
+	{[]string{"TUESDAY", "1430"}, false, 10, 0},
+	{[]string{"TUESDAY", "1430"}, true, 14, 30},
+	{[]string{"banana", "1430"}, true, 14, 30},
+	{[]string{"apples"}, false, 10, 0},
+	{[]string{"apples"}, true, 10, 0},
+	{[]string{"4830"}, false, 0, 30},
+}
+
+func TestTimeFromSchedule(t *testing.T) {
+	loc, _ := time.LoadLocation("Local")
+	for _, timevar := range timevars {
+		now := time.Now()
+		if v := timeFromSchedule(timevar.scheduleStrings, timevar.isWeekly, now, loc); v.Hour() != timevar.hour || v.Minute() != timevar.min {
+			t.Errorf("timeFromSchedule(%v, %t, %s, %s) returned hour:%d min:%d, expected hour:%d min:%d",
+				timevar.scheduleStrings, timevar.isWeekly, now, loc, v.Hour(), v.Minute(), timevar.hour, timevar.min)
 		}
 	}
 }

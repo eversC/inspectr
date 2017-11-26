@@ -14,13 +14,24 @@ results are unique by cluster/pod-name/container-name/namespace/image
 results are stored (and appear in alerts) in a map where the key is cluster:image:pod-name:cluster-name
 
 
-## running frequency
+## running/alerting frequency
 
-there is a daily 'scheduled alert window', within which all results obtained will be outputted
+the binary outputs a full set of results daily or weekly, and new results
+whenever they're discovered.
 
-outside of this window, the process runs every minute
+the frequency at which the full resultset is outputted can be configered by
+using the environment variable:
 
-if any errors are encountered, the process won't run again for 5 minutes.
+* ___INSPECTR_SCHEDULE___
+
+e.g.
+"1430" = 14:30 daily
+
+"tuesday|1430" = 14:30 every tuesday
+
+weekday is not case-sensitive
+
+defaults to "1000" (daily)
 
 
 ## alert cache
@@ -60,7 +71,7 @@ to enable this functionality, you'll need to set 2 environment variables:
   * optional (as your JIRA instance may require them): otherFieldKey:otherFieldValue
   * otherFieldKey should equal the field names as they appear in your JIRA UI
   * note the sepratators, "|" and "," and ":"
-  
+
 it's recommended to:
 
 * __use kubernetes secrets__ for your environment variables (note if you've got any whitespaces in your otherFieldKeys, you'll have to wrap the environment variable in quotes when you issue the kubectl create command)
