@@ -31,6 +31,8 @@ e.g.
 
 weekday is not case-sensitive
 
+defaults to "1000" (daily)
+
 
 ## alert cache
 
