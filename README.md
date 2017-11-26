@@ -26,6 +26,7 @@ using the environment variable:
 
 e.g.
 "1430" = 14:30 daily
+
 "tuesday|1430" = 14:30 every tuesday
 
 weekday is not case-sensitive
