@@ -1,0 +1,67 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: inspectr-serviceaccount
+  namespace: inspectr
+
+---
+
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: ClusterRole
+metadata:
+  name: inspectr-clusterrole
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - pods
+    verbs:
+      - get
+      - list
+
+---
+
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: Role
+metadata:
+  name: inspectr-role
+  namespace: inspectr
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - pods
+    verbs:
+      - get
+      - list
+
+---
+
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: RoleBinding
+metadata:
+  name: inspectr-role-nisa-binding
+  namespace: inspectr
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: inspectr-role
+subjects:
+  - kind: ServiceAccount
+    name: inspectr-serviceaccount
+    namespace: inspectr
+
+---
+
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: ClusterRoleBinding
+metadata:
+  name: inspectr-clusterrole-nisa-binding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: inspectr-clusterrole
+subjects:
+  - kind: ServiceAccount
+    name: inspectr-serviceaccount
+    namespace: inspectr
