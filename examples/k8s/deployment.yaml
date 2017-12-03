@@ -17,6 +17,10 @@ spec:
       - name: inspectr
         image: eversc/inspectr
         imagePullPolicy: Always
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 8080
         resources:
           requests:
             memory: 50Mi
@@ -40,3 +44,5 @@ spec:
               secretKeyRef:
                 name: inspectr-param-secret
                 key: jiraParams
+        ports:
+          - containerPort: 8080
