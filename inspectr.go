@@ -19,6 +19,8 @@ import (
 	jira "github.com/andygrunwald/go-jira"
 	"github.com/golang/glog"
 	version "github.com/hashicorp/go-version"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 //AvailableImageData type
@@ -58,6 +60,18 @@ type InspectrResult struct {
 	Version   string
 }
 
+var (
+	upgradeNum = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "inspectr_upgrades_total",
+		Help: "Number of image upgrades currently available.",
+	})
+)
+
+func init() {
+	// Metrics have to be registered to be exposed:
+	prometheus.MustRegister(upgradeNum)
+}
+
 func main() {
 	flag.Parse()
 	glog.Info("hello inspectr")
@@ -74,17 +88,23 @@ func main() {
 	timezone := os.Getenv(timezoneKey)
 	schedule := os.Getenv(scheduleKey)
 	glog.Info("picked up env vars")
-	http.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("OK"))
-	})
-	go func() {
-		http.ListenAndServe(":8080", nil)
-	}()
+	handleHTTP()
 	glog.Info("about to enter life-of-pod loop")
 	for {
 		time.Sleep(time.Duration(invokeInspectrProcess(&registeredImages, webhookID,
 			jiraURL, jiraParams, schedule, location(timezone))) * time.Second)
 	}
+}
+
+//handleHTTP starts metrics and monitoring servers in the background
+func handleHTTP() {
+	http.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("OK"))
+	})
+	http.Handle("/metrics", promhttp.Handler())
+	go func() {
+		http.ListenAndServe(":8080", nil)
+	}()
 }
 
 //location returns a time.Location that represents the specified location string
@@ -118,6 +138,7 @@ func invokeInspectrProcess(registeredImages *map[string][]string, webhookID,
 		upgradeMap, err = upgradesMap(imageToResultsMap(k8sJSONData))
 		if err == nil {
 			upgradeMap = filterUpgradesMap(upgradeMap, *registeredImages, withinAlertWindow)
+			upgradeNum.Set(float64(len(upgradeMap)))
 			augmentInternalImageRegistry(upgradeMap, *registeredImages, withinAlertWindow)
 			outputResults(upgradeMap, webhookID, withinAlertWindow)
 			reportResults(upgradeMap, jiraURL, jiraParamString, webhookID)
