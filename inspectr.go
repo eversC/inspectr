@@ -65,6 +65,14 @@ var (
 		Name: "inspectr_upgrades_total",
 		Help: "Number of image upgrades currently available.",
 	})
+	ignoreImages = map[string][]string{
+		"gcr.io/google_containers/nginx-ingress-controller": {"0.61", "0.62"}}
+	ignoreNamespaces = map[string]struct{}{
+		"kube-system": struct{}{},
+	}
+	allowedPodPhases = map[string]struct{}{
+		"Running": struct{}{},
+	}
 )
 
 func init() {
@@ -393,15 +401,20 @@ func upgradeCandidateSlice(versionString string, availImagesData []AvailableImag
 	return
 }
 
+//contains returns a bool indicating whether the specified string exists within
+// the specified string slice. It is case sensitive
+func contains(s []string, e string) (contains bool) {
+	for _, a := range s {
+		if a == e {
+			contains = true
+		}
+	}
+	return
+}
+
 //imageToResultsMap returns a map of image <--> InspectrResult type, constructed from what's deemed to be valid pods
 // in rs json from k8s master
 func imageToResultsMap(jsonData *Data) (imageToResultsMap map[string][]InspectrResult) {
-	var ignoreNamespaces = map[string]struct{}{
-		"kube-system": struct{}{},
-	}
-	var allowedPodPhases = map[string]struct{}{
-		"Running": struct{}{},
-	}
 	imageToResultsMap = make(map[string][]InspectrResult)
 	projectName := projectName()
 	clusterName := clusterName()
@@ -418,16 +431,21 @@ func imageToResultsMap(jsonData *Data) (imageToResultsMap map[string][]InspectrR
 					splitImage := strings.Split(containerImage, ":")
 					if len(splitImage) > 1 {
 						image := imageFromURI(containerImage)
-						inspectrResult := InspectrResult{image, namespace,
-							1, nil, versionFromURI(splitImage)}
-						clusterImageString := projectName + ":" + clusterName + ":" + image + ":" +
-							podName(metadata.Name) + ":" + container.Name
-						inspectrResults, ok := imageToResultsMap[clusterImageString]
-						if !ok {
-							inspectrResults = make([]InspectrResult, 0)
+						tagsToIgnore, ignoreImageOk := ignoreImages[image]
+						version := versionFromURI(splitImage)
+						if !ignoreImageOk || !contains(tagsToIgnore, version) {
+							inspectrResult := InspectrResult{image, namespace,
+								1, nil, version}
+							clusterImageString := projectName + ":" + clusterName + ":" +
+								image + ":" + podName(metadata.Name) + ":" + container.Name
+							inspectrResults, ok := imageToResultsMap[clusterImageString]
+							if !ok {
+								inspectrResults = make([]InspectrResult, 0)
+							}
+							inspectrResults = addInspectrResult(inspectrResults,
+								inspectrResult)
+							imageToResultsMap[clusterImageString] = inspectrResults
 						}
-						inspectrResults = addInspectrResult(inspectrResults, inspectrResult)
-						imageToResultsMap[clusterImageString] = inspectrResults
 					}
 				}
 			}

@@ -284,6 +284,31 @@ func TestIsValidDayOfWeek(t *testing.T) {
 	}
 }
 
+var containVars = []struct {
+	stringSlice    []string
+	containsString string
+	contains       bool
+}{
+	{[]string{"banana", "apple"}, "banana", true},
+	{[]string{"banana", "apple"}, "orange", false},
+	{[]string{"banana", "apple"}, "", false},
+	{[]string{"banana", "apple"}, "bana", false},
+	{[]string{"banana", "apple"}, "bananaman", false},
+	{[]string{""}, "banana", false},
+	{[]string{"0.61", "0.62"}, "0.62", true},
+	{[]string{"Banana"}, "banana", false},
+}
+
+func TestContains(t *testing.T) {
+	for _, containVar := range containVars {
+		if v := contains(containVar.stringSlice, containVar.containsString); v != containVar.contains {
+			t.Errorf("contains(%v, %s) returned %t, expected: %t",
+				containVar.stringSlice, containVar.containsString, v,
+				containVar.contains)
+		}
+	}
+}
+
 var timevars = []struct {
 	scheduleStrings []string
 	isWeekly        bool
