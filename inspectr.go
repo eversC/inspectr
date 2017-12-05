@@ -70,6 +70,9 @@ var (
 	ignoreNamespaces = map[string]struct{}{
 		"kube-system": struct{}{},
 	}
+	ignoreTags = map[string]struct{}{
+		"latest": struct{}{},
+	}
 	allowedPodPhases = map[string]struct{}{
 		"Running": struct{}{},
 	}
@@ -345,9 +348,13 @@ func upgradesMap(imageToResultsMap map[string][]InspectrResult) (upgradesMap map
 		}
 		if err == nil {
 			upgradesResults := make([]InspectrResult, 0)
+			tagsToIgnore, ignoreImageOk := ignoreImages[imageString]
 			for _, result := range v {
 				for _, upgradeVersion := range upgradeCandidateSlice(result.Version, []AvailableImageData(availImages)) {
-					result.Upgrades = append(result.Upgrades, upgradeVersion.tag())
+					version := upgradeVersion.tag()
+					if !ignoreImageOk || !contains(tagsToIgnore, version) {
+						result.Upgrades = append(result.Upgrades, version)
+					}
 				}
 				if len(result.Upgrades) > 0 {
 					upgradesResults = append(upgradesResults, result)
@@ -381,9 +388,6 @@ func (gcrTag GcrTag) tag() string {
 func upgradeCandidateSlice(versionString string, availImagesData []AvailableImageData) (upgradeCandidates []AvailableImageData) {
 	for _, availImageData := range availImagesData {
 		tag := availImageData.tag()
-		var ignoreTags = map[string]struct{}{
-			"latest": struct{}{},
-		}
 		_, ok := ignoreTags[tag]
 		if !ok {
 			var err error
@@ -431,21 +435,17 @@ func imageToResultsMap(jsonData *Data) (imageToResultsMap map[string][]InspectrR
 					splitImage := strings.Split(containerImage, ":")
 					if len(splitImage) > 1 {
 						image := imageFromURI(containerImage)
-						tagsToIgnore, ignoreImageOk := ignoreImages[image]
-						version := versionFromURI(splitImage)
-						if !ignoreImageOk || !contains(tagsToIgnore, version) {
-							inspectrResult := InspectrResult{image, namespace,
-								1, nil, version}
-							clusterImageString := projectName + ":" + clusterName + ":" +
-								image + ":" + podName(metadata.Name) + ":" + container.Name
-							inspectrResults, ok := imageToResultsMap[clusterImageString]
-							if !ok {
-								inspectrResults = make([]InspectrResult, 0)
-							}
-							inspectrResults = addInspectrResult(inspectrResults,
-								inspectrResult)
-							imageToResultsMap[clusterImageString] = inspectrResults
+						inspectrResult := InspectrResult{image, namespace,
+							1, nil, versionFromURI(splitImage)}
+						clusterImageString := projectName + ":" + clusterName + ":" +
+							image + ":" + podName(metadata.Name) + ":" + container.Name
+						inspectrResults, ok := imageToResultsMap[clusterImageString]
+						if !ok {
+							inspectrResults = make([]InspectrResult, 0)
 						}
+						inspectrResults = addInspectrResult(inspectrResults,
+							inspectrResult)
+						imageToResultsMap[clusterImageString] = inspectrResults
 					}
 				}
 			}
