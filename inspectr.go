@@ -148,8 +148,8 @@ func invokeInspectrProcess(registeredImages *map[string][]string, webhookID,
 		var upgradeMap map[string][]InspectrResult
 		upgradeMap, err = upgradesMap(imageToResultsMap(k8sJSONData))
 		if err == nil {
-			upgradeMap = filterUpgradesMap(upgradeMap, *registeredImages, withinAlertWindow)
 			upgradeNum.Set(float64(len(upgradeMap)))
+			upgradeMap = filterUpgradesMap(upgradeMap, *registeredImages, withinAlertWindow)
 			augmentInternalImageRegistry(upgradeMap, *registeredImages, withinAlertWindow)
 			outputResults(upgradeMap, webhookID, withinAlertWindow)
 			reportResults(upgradeMap, jiraURL, jiraParamString, webhookID)
