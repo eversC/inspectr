@@ -267,7 +267,7 @@ func filterUpgradesMap(upgradesMap map[string][]InspectrResult, registeredImages
 func sliceContainsResult(registeredResults []string, result InspectrResult) (containsResult bool) {
 	for _, registeredResult := range registeredResults {
 		splitStrings := strings.Split(registeredResult, "|")
-		if splitStrings[0] == result.Version && splitStrings[1] == result.Namespace {
+		if splitStrings[0] == registeredImageString(result) && splitStrings[1] == result.Namespace {
 			containsResult = true
 			break
 		}
@@ -326,7 +326,7 @@ func stringSliceFromResultSlice(resultSlice []InspectrResult) (registeredResults
 //registeredImageString returns a string consisting of [result.Version]|[result.Namespace], helpful for the
 // image registry cache
 func registeredImageString(result InspectrResult) (resultString string) {
-	resultString = result.Version + "|" + result.Namespace
+	resultString = strings.Join(result.Upgrades, ",") + "|" + result.Namespace
 	return
 }
 
