@@ -266,8 +266,7 @@ func filterUpgradesMap(upgradesMap map[string][]InspectrResult, registeredImages
 //sliceContainsResult returns a bool indicating whether the specified InspectrResult is 'registered' in the string slice
 func sliceContainsResult(registeredResults []string, result InspectrResult) (containsResult bool) {
 	for _, registeredResult := range registeredResults {
-		splitStrings := strings.Split(registeredResult, "|")
-		if splitStrings[0] == registeredImageString(result) && splitStrings[1] == result.Namespace {
+		if registeredResult == registeredImageString(result) {
 			containsResult = true
 			break
 		}
