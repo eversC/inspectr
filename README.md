@@ -16,7 +16,7 @@ hence, you MUST be running at least one public image from one of the aforementio
 | ------------- |:-------------:| :-----:|
 | INSPECTR_JIRA_PARAMS      |  | JIRA auth and other details required for posting to JIRA REST API. Default is for JIRA to not be enabled (also requires INSPECTR_JIRA_URL env var)|
 | INSPECTR_JIRA_URL         |  | URL of your JIRA instance. Default is for JIRA to not be enabled (also requires INSPECTR_JIRA_PARAMS env var)|
-| INSPECTR_SCHEDULE         | 1000 | If daily, format is hhmm. If weekly, format is pipe separated, e.g. tuesday|1430 |
+| INSPECTR_SCHEDULE         | 1000 | To set a daily schedule, the format is hhmm. To set weekly, format is pipe separated, e.g. "tuesday\|1430" |
 | INSPECTR_SLACK_WEBHOOK_ID |  | id of the webhook you want alerts going to. Default is for slack outputs to be disabled |
 | INSPECTR_TIMEZONE         | Local | from time package (zoneinfo.go): *"If the name is "" or "UTC", LoadLocation returns UTC. If the name is "Local", LoadLocation returns Local. Otherwise, the name is taken to be a location name corresponding to a file in the IANA Time Zone database, such as "America/New_York"*. |
 
