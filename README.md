@@ -4,7 +4,21 @@
 
 this is a binary that, when run in a k8s cluster, gets details of pods in the same cluster (via the k8s master/API), and alerts if certain conditions are met.
 
-currently the only condition that's ever met is "are there any upgrades to the image being run in pod X?"
+currently, these 'conditions' are only met if there's an upgrade to an image that a pod is running.
+
+public image repo integrations: dockerhub, gcr, quay  (no private repo functionality yet)
+
+hence, you MUST be running at least one public image from one of the aforementioned repo's, otherwise there's not much point in running inspectr
+
+## environment variables
+
+| name        |       default      | description  |
+| ------------- |:-------------:| :-----:|
+| INSPECTR_JIRA_PARAMS      |  | JIRA auth and other details required for posting to JIRA REST API. Default is for JIRA to not be enabled (also requires INSPECTR_JIRA_URL env var)|
+| INSPECTR_JIRA_URL         |  | URL of your JIRA instance. Default is for JIRA to not be enabled (also requires INSPECTR_JIRA_PARAMS env var)|
+| INSPECTR_SCHEDULE         | 1000 | If daily, format is hhmm. If weekly, format is pipe separated, e.g. tuesday|1430 |
+| INSPECTR_SLACK_WEBHOOK_ID |  | id of the webhook you want alerts going to. Default is for slack outputs to be disabled |
+| INSPECTR_TIMEZONE         | Local | from time package (zoneinfo.go): *"If the name is "" or "UTC", LoadLocation returns UTC. If the name is "Local", LoadLocation returns Local. Otherwise, the name is taken to be a location name corresponding to a file in the IANA Time Zone database, such as "America/New_York"*. |
 
 
 ## result grouping
