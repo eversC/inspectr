@@ -9,6 +9,9 @@ spec:
     metadata:
       annotations:
         kubernetes.io/hostname: inspectr
+        prometheus.io/scrape: "true"
+        prometheus.io/path: "/metrics"
+        prometheus.io/port: "8080"
       labels:
         app: inspectr
     spec:
@@ -44,5 +47,7 @@ spec:
               secretKeyRef:
                 name: inspectr-param-secret
                 key: jiraParams
+          - name: INSPECTR_SCHEDULE
+            value: "monday|1000"  
         ports:
           - containerPort: 8080
