@@ -1,6 +1,6 @@
 # inspectr
 
-[![Join the chat at https://gitter.im/inspectr/Lobby](https://badges.gitter.im/inspectr/Lobby.svg)](https://gitter.im/inspectr/Lobby?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
+**NOT SUPPORTED**
 
 this is a binary that, when run in a k8s cluster, gets details of pods in the same cluster (via the k8s master/API), and alerts if certain conditions are met.
 
